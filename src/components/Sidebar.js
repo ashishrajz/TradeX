@@ -72,7 +72,7 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
               key={item.id}
               className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-200 ${
                 activeTab === item.id 
-                  ? "bg-gray-800/60 text-white  shadow-2xl shadow-gray-900/20" 
+                  ? "bg-gray-800/60 text-white shadow-lg shadow-gray-900/20" 
                   : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/30"
               }`}
               onClick={() => handleNavigation(item)}

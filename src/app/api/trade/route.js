@@ -66,27 +66,30 @@ export async function POST(req) {
       );
     }
 
-    // --- Save user ---
-    await user.save();
-
-    // --- Create trade doc ---
+    // --- Create trade doc (with date auto from schema) ---
     const tradeDoc = await Trade.create({
       user: user._id,
       symbol,
       side,
       quantity: qty,
       price: tradePrice,
+      date: new Date(), // ensure stored properly
     });
 
-    user.trades = user.trades || []; // ensure trades array exists
-user.trades.push({
-  symbol,
-  side,
-  quantity: qty,
-  price: tradePrice,
-});
+    // --- Push trade into user's local trades array too ---
+    user.trades = user.trades || [];
+    user.trades.push({
+      symbol,
+      side,
+      quantity: qty,
+      price: tradePrice,
+      date: new Date(), // ✅ add date so it sorts correctly
+    });
 
     await user.save();
+
+    console.log("✅ Saved trade:", tradeDoc);
+    console.log("📊 Updated user trades:", user.trades.slice(-5)); // log last 5 trades
 
     return new Response(
       JSON.stringify({

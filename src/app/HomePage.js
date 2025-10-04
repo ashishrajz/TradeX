@@ -8,6 +8,8 @@ import BuySellForm from "@/components/BuySellForm";
 import FeaturedCoins from "@/components/FeaturedCoins";
 import Header from "@/components/Header";
 import StockLoader from "@/components/ChartStockLoader";
+import RunStrategyButton from "@/components/RunStrategyButton";
+import CopilotModal from "@/components/CopilotModal";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -17,18 +19,22 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [timeframe, setTimeframe] = useState("24h");
   const [activeTab, setActiveTab] = useState("home");
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
 
   const intervalMap = {
+    "1min": "1m",   // new
     "24h": "1h",
     "1m": "1d",
     "1y": "1w",
+    "1M": "1M",     // new (1 month candles)
   };
+  
 
   const interval = intervalMap[timeframe];
 
-  const { data: ticker } = useSWR(`/api/ticker?symbol=${selectedSymbol}`, fetcher, { refreshInterval: 5000 });
-  const { data: klines } = useSWR(`/api/klines?symbol=${selectedSymbol}&interval=${interval}`, fetcher);
+  const { data: ticker } = useSWR(`/api/ticker?symbol=${selectedSymbol}`, fetcher, { refreshInterval: 30000 });
+  const { data: klines } = useSWR(`/api/klines?symbol=${selectedSymbol}&interval=${interval}`, fetcher,{ refreshInterval: 30000 });
 
   useEffect(() => {
     if (selectedCoin) {
@@ -36,8 +42,7 @@ export default function HomePage() {
     }
   }, [selectedCoin]);
 
-  // Dummy user data for now
-  const user = { name: "User", cash: 100 };
+ 
 
   return (
     <div className="flex bg-black min-h-screen text-white">
@@ -58,14 +63,17 @@ export default function HomePage() {
     <div className="flex items-center justify-between">
       <h2 className="text-xl font-bold">{selectedSymbol}</h2>
       <select
-        value={timeframe}
-        onChange={(e) => setTimeframe(e.target.value)}
-        className="border rounded p-1 text-sm bg-gray-800 text-white"
-      >
-        <option value="24h">Weekly</option>
-        <option value="1m">Monthly</option>
-        <option value="1y">Yearly</option>
-      </select>
+  value={timeframe}
+  onChange={(e) => setTimeframe(e.target.value)}
+  className="border rounded p-1 text-sm bg-gray-800 text-white"
+>
+  <option value="1min">1 Minute</option>
+  <option value="24h">1 Hour</option>
+  <option value="1m">1 Day</option>
+  <option value="1y">1 Week</option>
+  <option value="1M">1 Month</option>
+</select>
+
     </div>
 
     {ticker && (
@@ -144,6 +152,28 @@ export default function HomePage() {
           symbol={selectedSymbol}
           price={ticker ? ticker.lastPrice : 0}
         />
+        <RunStrategyButton
+  symbol={selectedSymbol}
+  price={ticker ? parseFloat(ticker.lastPrice) : 0}
+/>
+{/* Add Copilot Button here */}
+<div className="flex justify-end">
+            <button
+              onClick={() => setCopilotOpen(true)}
+              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl text-white font-bold shadow hover:from-emerald-400 hover:to-teal-400 transition"
+            >
+              🚀 Run with Copilot
+            </button>
+          </div>
+
+          {/* Copilot Modal */}
+          <CopilotModal
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            selectedSymbol={selectedSymbol}
+          />
+
+
       </div>
     </div>
   </div>

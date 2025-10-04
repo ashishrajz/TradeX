@@ -8,7 +8,9 @@ export async function GET(req) {
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
 
-  // Build cache key dynamically
+  
+
+  // Build cache key dynamically 
   const cacheKey = startDate && endDate
     ? `klines:${symbol}:${interval}:${startDate}:${endDate}:${limit}`
     : `klines:${symbol}:${interval}:${limit}`;
@@ -28,6 +30,8 @@ export async function GET(req) {
   } else {
     params.append("limit", limit);
   }
+
+  
 
   const url = `https://api.binance.com/api/v3/klines?${params.toString()}`;
 

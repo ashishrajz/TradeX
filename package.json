@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "node server/liveWorker.js",
+    "tracker": "node server/equityTracker.js"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.49.0",

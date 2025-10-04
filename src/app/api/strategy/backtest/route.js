@@ -1,156 +1,177 @@
-// src/app/api/strategy/backtest/route.js
 import { auth } from "@clerk/nextjs/server";
 import connectDB from "@/lib/db";
 import User from "@/lib/models/User";
 
-const CALL_TIMEOUT_MS = 4000;
+// --- helpers: basic indicator calculations ---
+function SMA(values, period) {
+  if (values.length < period) return null;
+  const slice = values.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
 
-// reuse klines fetch
-async function fetchKlinesRange(symbol, interval = "1d", startDate, endDate) {
-    const base =
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-  
-    const url = `${base}/api/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
-  
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Failed fetching historical klines");
-    return res.json();
+function EMA(values, period) {
+  if (values.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = values[values.length - period];
+  for (let i = values.length - period + 1; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function RSI(values, period = 14) {
+  if (values.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = values.length - period; i < values.length; i++) {
+    const diff = values[i] - values[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff;
+  }
+  const rs = gains / (losses || 1);
+  return 100 - 100 / (1 + rs);
+}
+
+// --- rule evaluator ---
+function evaluateRule(rule, candles) {
+  const closes = candles.map(c => c.close);
+  let indicatorValue;
+
+  if (rule.indicator === "PRICE") {
+    indicatorValue = candles.at(-1)[rule.params?.field || "close"];
+  }
+  if (rule.indicator === "SMA") {
+    indicatorValue = SMA(closes, rule.params?.period || 20);
+  }
+  if (rule.indicator === "EMA") {
+    indicatorValue = EMA(closes, rule.params?.period || 20);
+  }
+  if (rule.indicator === "RSI") {
+    indicatorValue = RSI(closes, rule.params?.period || 14);
   }
 
-async function callStrategy(url, payload) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
-  try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(t);
-    if (!r.ok) {
-      const txt = await r.text();
-      throw new Error(`Strategy responded ${r.status}: ${txt}`);
-    }
-    return await r.json();
-  } catch (err) {
-    clearTimeout(t);
-    throw err;
+  if (indicatorValue == null) return null;
+
+  // apply condition
+  const v = Number(rule.value);
+  switch (rule.condition) {
+    case "<": return indicatorValue < v ? rule : null;
+    case ">": return indicatorValue > v ? rule : null;
+    case "<=": return indicatorValue <= v ? rule : null;
+    case ">=": return indicatorValue >= v ? rule : null;
+    case "==": return indicatorValue == v ? rule : null;
+    default: return null;
   }
 }
 
-// helper: compute simple metrics
-function computeMetrics(equityCurve, trades, startingCapital) {
-  const returns = [];
-  for (let i = 1; i < equityCurve.length; i++) {
-    const r = (equityCurve[i].value / equityCurve[i - 1].value) - 1;
-    returns.push(r);
-  }
-  const avg = returns.reduce((a, b) => a + b, 0) / (returns.length || 1);
-  const sd = Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / (returns.length || 1));
-  const totalReturn = ((equityCurve[equityCurve.length - 1].value / startingCapital) - 1) * 100;
-  // max drawdown
-  let peak = -Infinity;
-  let maxDD = 0;
-  equityCurve.forEach(pt => {
-    peak = Math.max(peak, pt.value);
-    maxDD = Math.max(maxDD, (peak - pt.value) / peak);
-  });
-  return {
-    totalReturnPct: Number(totalReturn.toFixed(2)),
-    avgDailyReturn: Number((avg * 100).toFixed(4)),
-    stdDev: Number((sd * 100).toFixed(4)),
-    maxDrawdownPct: Number((maxDD * 100).toFixed(2)),
-    tradesCount: trades.length,
-  };
-}
-
+// --- API handler ---
 export async function POST(req) {
   try {
     const { userId } = await auth();
-    if (!userId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" }});
-
-    const body = await req.json();
-    const { symbol, interval = "1d", startDate, endDate, startingCapital = 10000 } = body;
-    if (!symbol || !startDate || !endDate) return new Response(JSON.stringify({ error: "Missing params" }), { status: 400, headers: { "Content-Type": "application/json" }});
+    if (!userId) return new Response("Unauthorized", { status: 401 });
 
     await connectDB();
-    const user = await User.findOne({ clerkId: userId });
-    if (!user || !user.strategyUrl) return new Response(JSON.stringify({ error: "Strategy URL not set" }), { status: 400, headers: { "Content-Type": "application/json" }});
+    const user = await User.findOne({ clerkId: userId }).lean();
+    if (!user) return new Response("User not found", { status: 404 });
 
-    const candles = await fetchKlinesRange(symbol, interval, startDate, endDate); // array of [ts,o,h,l,c,v] or objects depending on your klines route
-    if (!Array.isArray(candles) || candles.length === 0) {
-      return new Response(JSON.stringify({ error: "No candles returned" }), { status: 400, headers: { "Content-Type": "application/json" }});
-    }
+    const body = await req.json();
+    const { symbol, startDate, endDate, interval, capital, strategyId, strategyUrl } = body;
 
-    // normalize to objects if array-of-arrays: try to detect
-    const normalized = candles.map(c => {
-      if (Array.isArray(c)) {
-        return { time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] };
-      }
-      return c;
-    });
+    // ✅ get candles
+    const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/klines?symbol=${symbol}&interval=${interval}&startDate=${startDate}&endDate=${endDate}`;
+    const r = await fetch(url);
+    const candles = await r.json();
 
-    let cash = Number(startingCapital);
-    let position = 0; // amount of asset
-    const equityCurve = [];
+    let cash = Number(capital) || 10000;
+    let position = 0;
     const trades = [];
+    const equityCurve = [];
 
-    // We'll iterate step-by-step
-    for (let i = 0; i < normalized.length; i++) {
-      const slice = normalized.slice(0, i + 1); // full history up to current
-      const latest = slice[slice.length - 1];
-      const payload = {
-        symbol,
-        interval,
-        candles: slice,
-        account: { cash, positions: { [symbol]: position } },
-        meta: { runType: "backtest", stepIndex: i, stepTime: latest.time },
-      };
+    if (strategyId) {
+      // ✅ CASE 1: Use saved no-code strategy
+      const strategy = user.strategies.find(s => String(s._id) === String(strategyId));
+      if (!strategy) return new Response("Strategy not found", { status: 404 });
 
-      let decision;
-      try {
-        decision = await callStrategy(user.strategyUrl, payload);
-      } catch (err) {
-        // log but continue; treat as HOLD
-        user.strategyLogs = user.strategyLogs || [];
-        user.strategyLogs.push({ at: new Date(), payload, response: null, error: String(err.message || err) });
-        if (user.strategyLogs.length > 100) user.strategyLogs = user.strategyLogs.slice(-100);
-        await user.save();
-        decision = { action: "HOLD" };
-      }
+      for (let i = 20; i < candles.length; i++) {
+        const slice = candles.slice(0, i + 1);
+        const c = candles[i];
 
-      // Validate decision
-      const action = (decision && decision.action) ? String(decision.action).toUpperCase() : "HOLD";
-      const qty = Number(decision && decision.quantity ? decision.quantity : 0);
-
-      const price = Number(latest.close);
-
-      if (action === "BUY" && qty > 0) {
-        const cost = qty * price;
-        if (cost <= cash && qty > 0) {
-          cash -= cost;
-          position += qty;
-          trades.push({ date: new Date(latest.time), action: "BUY", quantity: qty, price });
+        let matchedRule = null;
+        for (const rule of strategy.rules) {
+          const res = evaluateRule(rule, slice);
+          if (res) { matchedRule = res; break; }
         }
-      } else if (action === "SELL" && qty > 0) {
-        const sellQty = Math.min(position, qty);
-        if (sellQty > 0) {
-          position -= sellQty;
-          cash += sellQty * price;
-          trades.push({ date: new Date(latest.time), action: "SELL", quantity: sellQty, price });
+
+        if (matchedRule?.action === "BUY" && cash >= c.close) {
+          const qty = matchedRule.quantity || 1;
+          const cost = qty * c.close;
+          if (cash >= cost) {
+            position += qty;
+            cash -= cost;
+            trades.push({ type: "BUY", qty, price: c.close, time: c.openTime });
+          }
         }
+
+        if (matchedRule?.action === "SELL" && position > 0) {
+          const qty = Math.min(matchedRule.quantity || position, position);
+          position -= qty;
+          cash += qty * c.close;
+          trades.push({ type: "SELL", qty, price: c.close, time: c.openTime });
+        }
+
+        equityCurve.push({
+          time: c.openTime,
+          value: cash + position * c.close,
+        });
       }
-      // compute equity
-      const equity = cash + (position * price);
-      equityCurve.push({ time: latest.time, value: Number(equity) });
+    } else if (strategyUrl || user.strategyUrl) {
+      // ✅ CASE 2: Fallback to user-hosted external strategy (old behavior)
+      const activeUrl = strategyUrl || user.strategyUrl;
+
+      for (const candle of candles) {
+        const { openTime, close } = candle;
+
+        const resp = await fetch(activeUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol, price: close, candle, position, cash }),
+        });
+
+        let decision = {};
+        try {
+          decision = await resp.json();
+        } catch {
+          decision = { action: "HOLD" };
+        }
+
+        if (decision.action === "BUY" && cash >= close) {
+          const qty = decision.quantity || 1;
+          const cost = close * qty;
+          if (cash >= cost) {
+            position += qty;
+            cash -= cost;
+            trades.push({ type: "BUY", qty, price: close, time: openTime });
+          }
+        }
+
+        if (decision.action === "SELL" && position > 0) {
+          const qty = Math.min(decision.quantity || position, position);
+          position -= qty;
+          cash += close * qty;
+          trades.push({ type: "SELL", qty, price: close, time: openTime });
+        }
+
+        equityCurve.push({
+          time: openTime,
+          value: cash + position * close,
+        });
+      }
+    } else {
+      return new Response("No strategy provided", { status: 400 });
     }
 
-    const metrics = computeMetrics(equityCurve, trades, startingCapital);
-    return new Response(JSON.stringify({ startingCapital, finalValue: equityCurve[equityCurve.length - 1].value, equityCurve, trades, metrics }), { status: 200, headers: { "Content-Type": "application/json" }});
+    return Response.json({ equityCurve, trades, candles });
   } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: String(err.message || err) }), { status: 500, headers: { "Content-Type": "application/json" }});
+    console.error("❌ Backtest error", err);
+    return new Response(err.message, { status: 500 });
   }
 }

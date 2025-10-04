@@ -3,6 +3,8 @@
 import { useState } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
+import CandleChart from "@/components/CandleChart";   // ✅ import your chart
+import StockLoader from "@/components/ChartStockLoader"; // optional loader
 
 const fetcher = (url) => fetch(url).then((r) => r.json());
 
@@ -19,66 +21,36 @@ const TrendingDownIcon = () => (
   </svg>
 );
 
-export default function AssetCard({ item, openChart }) {
-  const [tradeSide, setTradeSide] = useState(null); // "BUY" or "SELL"
+export default function AssetCard({ item }) {
+  const [tradeSide, setTradeSide] = useState(null);
   const [tradeQty, setTradeQty] = useState("");
   const [popupOpen, setPopupOpen] = useState(false);
   const [tradeLoading, setTradeLoading] = useState(false);
+
+  // ✅ analytics popup state
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   const { data: marketData, isLoading } = useSWR(
     item?.symbol ? `/api/binance/${item.symbol}` : null,
     fetcher
   );
 
+  // ✅ fetch klines only when analytics modal is open
+  const { data: klines, isLoading: klinesLoading } = useSWR(
+    analyticsOpen && item?.symbol
+      ? `/api/klines?symbol=${item.symbol}&interval=1h&limit=100`
+      : null,
+    fetcher
+  );
+
   if (isLoading || !marketData) {
     return (
-      <div
-        className="animate-pulse backdrop-blur-xl rounded-3xl p-6 
-        border border-gray-700 bg-gray-900/40"
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gray-700 rounded-2xl" />
-            <div>
-              <div className="h-5 w-24 bg-gray-700 rounded mb-2"></div>
-              <div className="h-4 w-16 bg-gray-700 rounded"></div>
-            </div>
-          </div>
-          <div className="h-6 w-16 bg-gray-700 rounded-2xl" />
-        </div>
-  
-        {/* Price */}
-        <div className="mb-4">
-          <div className="h-8 w-28 bg-gray-700 rounded mb-2"></div>
-          <div className="h-4 w-20 bg-gray-700 rounded"></div>
-        </div>
-  
-        {/* Metrics */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="bg-gray-800 border border-gray-700 rounded-2xl p-3"
-            >
-              <div className="h-3 w-12 bg-gray-700 rounded mb-2"></div>
-              <div className="h-4 w-16 bg-gray-600 rounded"></div>
-            </div>
-          ))}
-        </div>
-  
-        {/* Buttons */}
-        <div className="flex flex-col gap-2">
-          <div className="h-10 w-full bg-gray-700 rounded-2xl"></div>
-          <div className="flex gap-4">
-            <div className="h-10 w-full bg-gray-700 rounded-2xl"></div>
-            <div className="h-10 w-full bg-gray-700 rounded-2xl"></div>
-          </div>
-        </div>
+      <div className="animate-pulse backdrop-blur-xl rounded-3xl p-6 border border-gray-700 bg-gray-900/40">
+        {/* skeleton like you already did */}
+        <div className="h-5 w-24 bg-gray-700 rounded mb-2"></div>
       </div>
     );
   }
-  
 
   if (!marketData || isNaN(marketData.Open) || isNaN(marketData.Close)) {
     return (
@@ -87,7 +59,6 @@ export default function AssetCard({ item, openChart }) {
       </div>
     );
   }
-  
 
   const isPositive = marketData.Close > marketData.Open;
   const changeAmount = marketData.Close - marketData.Open;
@@ -116,7 +87,7 @@ export default function AssetCard({ item, openChart }) {
           symbol: item.symbol,
           side: tradeSide,
           quantity: Number(tradeQty),
-          price: marketData.Close
+          price: marketData.Close,
         }),
       });
 
@@ -135,89 +106,121 @@ export default function AssetCard({ item, openChart }) {
   };
 
   return (
+    <>
+      <div
+        className={`
+          group relative overflow-hidden backdrop-blur-xl rounded-3xl p-6 transition-all duration-500
+          border ${isPositive ? 'border-green-500/20 hover:border-emerald-500' : 'border-red-500/30 hover:border-red-500'}
+          bg-gradient-to-br ${isPositive ? 'from-green-900/30 via-gray-900/30 to-slate-800/50' : 'from-red-900/30 via-gray-900/30 to-slate-800/50'}
+          hover:shadow-2xl ${isPositive ? 'hover:shadow-emerald-500/10' : 'hover:shadow-red-500/10'}
+        `}
+      >
+        <div className="relative z-10">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-600 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold">{item.symbol?.charAt(0) || '?'}</span>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
+                <p className="text-gray-400 text-sm">Qty: {item.quantity}</p>
+              </div>
+            </div>
+
+            <div className={`flex items-center gap-1 px-3 py-1 rounded-2xl font-bold text-sm ${
+              isPositive 
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+            }`}>
+              {isPositive ? <TrendingUpIcon /> : <TrendingDownIcon />}
+              {changePercent}%
+            </div>
+          </div>
+
+          {/* Price */}
+          <div className="mb-4">
+            <div className="text-3xl font-black text-white mb-1">${marketData.Close?.toFixed(2)}</div>
+            <div className={`text-sm font-semibold flex items-center gap-1 ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span>{isPositive ? '+' : ''}{changeAmount.toFixed(2)}</span>
+              <span className="text-gray-500">from open</span>
+            </div>
+          </div>
+          {/* Metrics */}
+<div className="grid grid-cols-2 gap-2 mb-4">
+  {[
+    { label: 'Open', value: `$${marketData.Open}` },
+    { label: 'High', value: `$${marketData.High}` },
+    { label: 'Low', value: `$${marketData.Low}` },
+    { label: 'Volume', value: marketData.Volume || '—' }
+  ].map((metric, index) => (
     <div
-      className={`
-        group relative overflow-hidden backdrop-blur-xl rounded-3xl p-6 transition-all duration-500
-        border ${isPositive ? 'border-green-500/20 hover:border-emerald-500' : 'border-red-500/30 hover:border-red-500'}
-        bg-gradient-to-br ${isPositive ? 'from-green-900/30 via-gray-900/30 to-slate-800/50' : 'from-red-900/30 via-gray-900/30 to-slate-800/50'}
-        hover:shadow-2xl ${isPositive ? 'hover:shadow-emerald-500/10' : 'hover:shadow-red-500/10'}
-      `}
+      key={index}
+      className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2"
     >
-      <div className="relative z-10">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-emerald-600 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold">{item.symbol?.charAt(0) || '?'}</span>
+      <div className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">
+        {metric.label}
+      </div>
+      <div className="text-white font-bold text-sm">{metric.value}</div>
+    </div>
+  ))}
+</div>
+
+
+          {/* Buttons */}
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setAnalyticsOpen(true)}   // ✅ open analytics modal
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold py-2 px-4 rounded-2xl transition shadow-lg"
+            >
+              <span>View Analytics</span>
+            </button>
+
+            <div className="flex flex-row gap-4">
+              <button
+                onClick={() => openTradePopup("BUY")}
+                className="w-full bg-green-400 hover:bg-green-300 text-white font-bold py-2 px-4 rounded-2xl transition"
+              >
+                Buy
+              </button>
+
+              <button
+                onClick={() => openTradePopup("SELL")}
+                className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-2 px-4 rounded-2xl transition"
+              >
+                Sell
+              </button>
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
-              <p className="text-gray-400 text-sm">Qty: {item.quantity}</p>
-            </div>
-          </div>
-
-          <div className={`flex items-center gap-1 px-3 py-1 rounded-2xl font-bold text-sm ${
-            isPositive 
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-          }`}>
-            {isPositive ? <TrendingUpIcon /> : <TrendingDownIcon />}
-            {changePercent}%
-          </div>
-        </div>
-
-        {/* Price */}
-        <div className="mb-4">
-          <div className="text-3xl font-black text-white mb-1">${marketData.Close?.toFixed(2)}</div>
-          <div className={`text-sm font-semibold flex items-center gap-1 ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-            <span>{isPositive ? '+' : ''}{changeAmount.toFixed(2)}</span>
-            <span className="text-gray-500">from open</span>
-          </div>
-        </div>
-
-        {/* Metrics */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {[
-            { label: 'Open', value: `$${marketData.Open}` },
-            { label: 'High', value: `$${marketData.High}` },
-            { label: 'Low', value: `$${marketData.Low}` },
-            { label: 'Volume', value: marketData.Volume || '—' }
-          ].map((metric, index) => (
-            <div key={index} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2">
-              <div className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">{metric.label}</div>
-              <div className="text-white font-bold text-sm">{metric.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Buttons */}
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={() => openChart({ ...marketData, symbol: item.symbol })}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold py-2 px-4 rounded-2xl transition shadow-lg"
-          >
-            <span>View Analytics</span>
-          </button>
-
-          <div className="flex flex-row gap-4">
-          <button
-            onClick={() => openTradePopup("BUY")}
-            className="w-full bg-green-400 hover:bg-green-300 text-white font-bold py-2 px-4 rounded-2xl transition"
-          >
-            Buy
-          </button>
-
-          <button
-            onClick={() => openTradePopup("SELL")}
-            className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-2 px-4 rounded-2xl transition"
-          >
-            Sell
-          </button>
           </div>
         </div>
       </div>
 
-      {/* Trade Popup */}
+      {/* ✅ Analytics Popup */}
+      {analyticsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="relative mx-auto my-20 bg-gray-900/90 rounded-3xl p-6 w-full max-w-5xl  border border-green-500/20 shadow-2xl">
+            <button
+              onClick={() => setAnalyticsOpen(false)}
+              className="absolute top-4 right-4 text-white text-2xl font-bold"
+            >
+              ×
+            </button>
+            <h2 className="text-2xl font-bold text-white mb-4">
+              {item.symbol} Analytics
+            </h2>
+
+            {klinesLoading ? (
+              <StockLoader />
+            ) : klines ? (
+              <CandleChart data={klines} />
+            ) : (
+              <div className="text-gray-400">No chart data available</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Trade Popup stays unchanged */}
       {popupOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-gray-900/80 rounded-3xl p-8 w-full max-w-md mx-4 relative border border-green-500/20 shadow-2xl">
@@ -243,6 +246,6 @@ export default function AssetCard({ item, openChart }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
