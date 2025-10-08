@@ -10,7 +10,7 @@ import Trade from "../src/lib/models/Trade.js";
 const POLL_INTERVAL = 10_000; // 10s for demo
 const CALL_TIMEOUT_MS = 4000;
 
-// --- indicator helpers ---
+
 function SMA(values, period) {
   if (values.length < period) return null;
   const slice = values.slice(-period);
@@ -69,7 +69,7 @@ function evaluateRule(rule, candles) {
   }
 }
 
-// --- ticker fetcher ---
+
 async function fetchTicker(symbol) {
   const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/ticker?symbol=${symbol}`;
   const r = await fetch(url);
@@ -77,7 +77,7 @@ async function fetchTicker(symbol) {
   return r.json();
 }
 
-// --- strategy API caller ---
+
 async function callStrategy(url, payload) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
@@ -96,7 +96,7 @@ async function callStrategy(url, payload) {
   }
 }
 
-// --- trade executor ---
+//trade executor
 async function executeTrade(user, run, side, qty, price) {
   if (qty <= 0) return;
 
@@ -148,7 +148,7 @@ async function executeTrade(user, run, side, qty, price) {
   await user.save();
 }
 
-// --- main loop ---
+//main loop
 async function loopOnce() {
   await connectDB();
   const runs = await LiveRun.find({ status: "running" });
@@ -165,7 +165,7 @@ async function loopOnce() {
       run.equityCurve.push({ at: new Date(), equity });
       const minEquity = run.capital * (1 - run.stopLoss / 100);
       if (equity < minEquity) {
-        console.log(`⚠️ Run ${run._id} stopped due to stop-loss (equity=${equity}, min=${minEquity})`);
+        
         run.status = "stopped";
         await run.save();
         continue;
@@ -181,10 +181,10 @@ async function loopOnce() {
     let decision = { action: "HOLD" };
 
     if (run.strategyUrl) {
-      // ✅ External URL strategy
+      
       decision = await callStrategy(run.strategyUrl, payload);
     } else if (run.strategyId) {
-      // ✅ No-code saved strategy
+      
       const strategy = user.strategies.find(s => String(s._id) === String(run.strategyId));
       if (strategy) {
         const candlesUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/klines?symbol=${run.symbol}&interval=${run.interval}&limit=100`;
@@ -206,7 +206,7 @@ async function loopOnce() {
 
     if (action === "BUY" || action === "SELL") {
       await executeTrade(user, run, action, qty, price);
-      console.log(`Executed ${action} ${qty} ${run.symbol} for run ${run._id}`);
+      
     }
 
     run.lastRunAt = new Date();
@@ -215,7 +215,7 @@ async function loopOnce() {
 }
 
 async function main() {
-  console.log("🚀 Live worker running...");
+  
   setInterval(() => {
     loopOnce().catch((err) => console.error("Loop error:", err));
   }, POLL_INTERVAL);

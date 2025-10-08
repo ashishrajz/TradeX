@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import connectDB from "@/lib/db";
 import User from "@/lib/models/User";
 
-// --- helpers: basic indicator calculations ---
+//helpers: basic indicator calculations
 function SMA(values, period) {
   if (values.length < period) return null;
   const slice = values.slice(-period);
@@ -76,7 +76,7 @@ export async function POST(req) {
     const body = await req.json();
     const { symbol, startDate, endDate, interval, capital, strategyId, strategyUrl } = body;
 
-    // ✅ get candles
+    
     const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/klines?symbol=${symbol}&interval=${interval}&startDate=${startDate}&endDate=${endDate}`;
     const r = await fetch(url);
     const candles = await r.json();
@@ -87,7 +87,7 @@ export async function POST(req) {
     const equityCurve = [];
 
     if (strategyId) {
-      // ✅ CASE 1: Use saved no-code strategy
+      
       const strategy = user.strategies.find(s => String(s._id) === String(strategyId));
       if (!strategy) return new Response("Strategy not found", { status: 404 });
 
@@ -124,7 +124,7 @@ export async function POST(req) {
         });
       }
     } else if (strategyUrl || user.strategyUrl) {
-      // ✅ CASE 2: Fallback to user-hosted external strategy (old behavior)
+      
       const activeUrl = strategyUrl || user.strategyUrl;
 
       for (const candle of candles) {

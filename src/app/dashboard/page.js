@@ -90,7 +90,7 @@ async function fetchAssetSparklinesForPortfolio(portfolioAssets = []) {
             const retryCoin = Array.isArray(retryData) ? retryData[0] : null;
             if (retryCoin?.sparkline_in_7d?.price?.length) {
               coin = retryCoin;
-              console.log(`✅ Retry success for ${asset.symbol}`);
+              
             } else {
               console.warn(`❌ Retry returned no sparkline for ${asset.symbol}`);
             }

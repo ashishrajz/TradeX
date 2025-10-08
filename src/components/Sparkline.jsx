@@ -23,7 +23,7 @@ function PriceTooltip({ active, payload }) {
 
 
 export default function Sparkline({ prices = [], up = true }) {
-  console.log("Sparkline input prices:", prices); // 🔥 debug
+  
 
   if (!prices || prices.length === 0) return <div className="text-gray-500 text-xs">No data</div>;
 
@@ -36,12 +36,12 @@ export default function Sparkline({ prices = [], up = true }) {
           time: start + i * step,
           price: p,
         }));
-        console.log("Mapped sparkline data:", mapped); // 🔥 debug
+        
         return mapped;
       })()
     : prices.map((p) => {
         const mapped = { time: p.time ?? p[0], price: p.price ?? p[1] ?? p };
-        console.log("Mapped object:", mapped); // 🔥 debug
+        ("Mapped object:", mapped); // 🔥 debug
         return mapped;
       });
 

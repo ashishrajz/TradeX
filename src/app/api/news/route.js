@@ -9,7 +9,7 @@ export async function GET() {
 
   // Cache for 30 minutes
   if (cachedData && now - lastFetchTime < 30 * 60 * 1000) {
-    console.log("[News API] Serving cached crypto news");
+    
     return NextResponse.json(cachedData);
   }
 
@@ -17,7 +17,7 @@ export async function GET() {
     // Fetch crypto-related news only
     const url = `https://gnews.io/api/v4/search?q=cryptocurrency OR bitcoin OR ethereum OR blockchain OR trading&lang=en&max=15&apikey=${process.env.GNEWS_API_KEY}`;
     
-    console.log("[News API] Fetching from GNews:", url);
+    
     const response = await fetch(url);
 
     if (!response.ok) {

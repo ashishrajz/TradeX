@@ -5,7 +5,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
 
-// --- Utility: safe stringify ---
+
 const safe = (x) => {
   try {
     return JSON.stringify(x, null, 2);
@@ -17,7 +17,7 @@ const safe = (x) => {
 export async function POST(req) {
   try {
     const body = await req.json();
-    console.log("[AI ROUTE] 🔹 Body received:", safe(body));
+    
 
     const { prompt, clerkId } = body;
     if (!prompt || typeof prompt !== "string") {
@@ -35,7 +35,7 @@ export async function POST(req) {
       console.warn("[AI ROUTE] ⚠️ No clerkId provided");
     }
 
-    // --- User summary for model ---
+    
     let summary = "";
     if (user) {
       const positions =
@@ -65,7 +65,7 @@ ${trades
 `;
     }
 
-    // --- System prompt ---
+    //System prompt
     const systemPrompt = `
 You are **Opus**, an advanced AI Trading Mentor.
 Your job is to analyze trading data and respond in a human-readable, ChatGPT-style Markdown format.
@@ -104,13 +104,13 @@ User Query:
 ${user ? `User Data:\n${summary}` : "(no user data provided)"}
 `;
 
-    console.log("[AI ROUTE] 🚀 Sending request to Gemini...");
+    
     const result = await model.generateContent(combinedPrompt);
     const text = result?.response?.text() || "No meaningful response.";
 
-    console.log("[AI ROUTE] ✅ Raw AI output:", text.slice(0, 300));
+    
 
-    // --- Extract JSON block (if exists) ---
+    //Extract JSON block 
     let parsed;
     const jsonMatch = text.match(/```json([\s\S]*?)```/);
     if (jsonMatch) {
@@ -124,7 +124,7 @@ ${user ? `User Data:\n${summary}` : "(no user data provided)"}
       parsed = { summary: text, scores: {}, insights: [], recommendations: [] };
     }
 
-    // --- Save to user logs ---
+    //Save to user logs
     if (clerkId && parsed?.summary) {
       await User.updateOne(
         { clerkId },

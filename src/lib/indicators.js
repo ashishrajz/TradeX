@@ -1,6 +1,6 @@
 // src/lib/indicators.js
 
-// --- Basic Moving Averages ---
+// Basic Moving Averages
 export function sma(values, period) {
     if (values.length < period) return null;
     const slice = values.slice(-period);

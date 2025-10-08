@@ -6,7 +6,6 @@ export async function GET(req) {
   const per_page = searchParams.get("per_page") || "50";
   const withChart = searchParams.get("with_chart") === "1"; // 👈 new flag
 
-  // --- Handle search ---
   if (q) {
     const cacheKey = `coins:search:${q}:chart=${withChart}`;
     const cached = await redis.get(cacheKey);
@@ -61,7 +60,7 @@ export async function GET(req) {
         mr = await Promise.all(chartPromises);
       }
 
-      // ✅ Prevent caching incomplete responses (e.g. partial or empty sparkline data)
+      // Prevent caching incomplete responses (e.g. partial or empty sparkline data)
 const validCoins = mr.filter(
   (coin) =>
     coin?.image &&

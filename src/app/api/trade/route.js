@@ -88,8 +88,7 @@ export async function POST(req) {
 
     await user.save();
 
-    console.log("✅ Saved trade:", tradeDoc);
-    console.log("📊 Updated user trades:", user.trades.slice(-5)); // log last 5 trades
+    
 
     return new Response(
       JSON.stringify({

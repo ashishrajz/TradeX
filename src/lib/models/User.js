@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 const RuleSchema = new mongoose.Schema({
   indicator: { type: String, required: true }, // RSI, SMA, EMA, PRICE
-  params: { type: mongoose.Schema.Types.Mixed, default: {} }, // e.g., { period: 14 }
+  params: { type: mongoose.Schema.Types.Mixed, default: {} }, 
   condition: { type: String, required: true }, // <, >, <=, >=, ==
   value: { type: mongoose.Schema.Types.Mixed, required: true }, 
   action: { type: String, enum: ["BUY", "SELL", "HOLD"], required: true },
@@ -26,10 +26,10 @@ const UserSchema = new mongoose.Schema({
   positions: { type: Map, of: Number, default: {} },
   trades: { type: Array, default: [] },
 
-  // 🔹 For external strategy (existing system)
+  
   strategyUrl: { type: String, default: "" },
 
-  // 🔹 Logs
+  
   strategyLogs: [
     {
       at: { type: Date, default: Date.now },
@@ -42,14 +42,14 @@ const UserSchema = new mongoose.Schema({
     type: [
       {
         at: { type: Date, default: Date.now },
-        total: Number, // total cash + assets at that time
+        total: Number, 
       },
     ],
     default: [],
   },
   
 
-  // 🔹 For No-code builder (new system)
+  
   strategies: { type: [StrategySchema], default: [] },
 });
 

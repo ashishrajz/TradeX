@@ -5,13 +5,13 @@ import { fetchCurrentPrice } from "../src/lib/fetchPrice.js";
 export async function updateEquitySnapshots() {
   await connectDB();
 
-  console.log("[equityTracker] Fetching all users...");
+  
   const users = await User.find({});
-  console.log(`[equityTracker] Found ${users.length} users`);
+  
 
   for (const user of users) {
     try {
-      // ✅ normalize positions
+      
       const positions =
         user.positions instanceof Map
           ? Object.fromEntries(user.positions)
@@ -49,7 +49,7 @@ export async function updateEquitySnapshots() {
         }
       }
 
-      // 💡 Skip update if too many prices failed
+      
       const failRatio = totalSymbols > 0 ? missingPrices / totalSymbols : 0;
       if (failRatio > 0.4) {
         console.warn(
@@ -63,13 +63,13 @@ export async function updateEquitySnapshots() {
       const total = Number(user.cash || 0) + positionsValue;
       const lastEntry = user.equityHistory?.[user.equityHistory.length - 1];
 
-      // ✅ Prevent 0-value or nonsensical spikes
+      
       if (total <= 0 && positionsValue > 0) {
         console.warn(`[equityTracker] ⚠️ Abnormal total=0 for ${user.email}, keeping last value`);
         continue;
       }
 
-      // ✅ Save only if changed significantly (to reduce noise)
+      
       if (!lastEntry || Math.abs(lastEntry.total - total) > 0.001 * total) {
         user.equityHistory.push({ at: new Date(), total });
 
@@ -77,9 +77,9 @@ export async function updateEquitySnapshots() {
           user.equityHistory = user.equityHistory.slice(-500);
 
         await user.save();
-        console.log(`[equityTracker] ✅ Snapshot saved for ${user.email}: $${total.toFixed(2)}`);
+        
       } else {
-        console.log(`[equityTracker] No significant change for ${user.email}, skipped.`);
+        
       }
     } catch (err) {
       console.error(`[equityTracker] ❌ Failed snapshot for user ${user.email}`, err);

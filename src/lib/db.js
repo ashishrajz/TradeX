@@ -1,17 +1,16 @@
 // src/lib/db.js
 import mongoose from "mongoose";
 
-// ✅ Read env variable
+
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// ✅ If no URI, log and exit instead of throwing instantly
 if (!MONGODB_URI) {
   console.error(
     "\n❌ MONGODB_URI not found in environment.\n" +
     "Make sure .env.local exists and contains:\n" +
     "MONGODB_URI=your_mongo_connection_string\n"
   );
-  // Exit cleanly instead of throwing
+
   process.exit(1);
 }
 
