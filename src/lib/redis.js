@@ -1,15 +1,14 @@
-// src/lib/redis.js
 import Redis from "ioredis";
 
-let redis;
+let redisClient = null;
 
-if (!global.redis) {
-  redis = new Redis(process.env.REDIS_URL, {
-    tls: { rejectUnauthorized: false }, // needed for Upstash sometimes
+if (process.env.REDIS_URL) {
+  redisClient = new Redis(process.env.REDIS_URL, {
+    tls: process.env.REDIS_URL.includes("upstash") ? {} : undefined,
   });
-  global.redis = redis;
+  console.log("✅ Connected to Redis");
 } else {
-  redis = global.redis;
+  console.warn("⚠️ REDIS_URL not found — skipping Redis connection (likely build time)");
 }
 
-export default redis;
+export default redisClient;
