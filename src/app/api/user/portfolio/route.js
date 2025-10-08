@@ -7,7 +7,7 @@ import User from "@/lib/models/User";
  */
 async function fetchCurrentPrice(symbol) {
   try {
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/ticker?symbol=${encodeURIComponent(symbol)}`;
+    const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/ticker?symbol=${encodeURIComponent(symbol)}`;
     
     const r = await fetch(url);
 
