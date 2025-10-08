@@ -1,6 +1,5 @@
-"use client";
-export const dynamic = "force-dynamic";
-
+"use client"; // 👈 must always be the first line
+export const dynamic = "force-dynamic"; // 👈 next, directly after
 
 import { useState, useRef } from "react";
 import { Lightbulb, TrendingUp, BarChart2 } from "lucide-react";
@@ -9,14 +8,16 @@ import { RiGeminiFill } from "react-icons/ri";
 import ChatInterface from "@/components/ChatInterface";
 import Sidebar from "@/components/Sidebar";
 
-export default function Home() {
+export default function OpusPage() {
   const [tradeText, setTradeText] = useState("");
   const [activeTab, setActiveTab] = useState("opus");
   const chatRef = useRef(null);
 
   const handleOptionClick = (id) => {
     if (id === 1) {
-      setTradeText("Based on my last 50 trades and portfolio, what suggestions do you have?");
+      setTradeText(
+        "Based on my last 50 trades and portfolio, what suggestions do you have?"
+      );
       scrollToChat();
     } else if (id === 3) {
       setTradeText("Analyze my portfolio and prepare a detailed report.");
@@ -64,7 +65,6 @@ export default function Home() {
       {/* Sidebar */}
       <Sidebar activeTab="opus" setActiveTab={setActiveTab} />
 
-      {/* ✅ Fixed container — no extra height below */}
       <div className="flex-1 relative min-h-screen flex flex-col ml-20">
         {/* Background glow */}
         <div className="absolute top-0 right-1/3 w-[500px] h-[500px] bg-blue-500/30 rounded-full blur-[120px] pointer-events-none"></div>
@@ -79,7 +79,7 @@ export default function Home() {
               <h1 className="text-2xl font-bold text-white flex items-center gap-1">
                 <FaCircleNotch className="text-blue-400 w-5 h-5" />
                 <span className="bg-gradient-to-r from-blue-400 to-blue-500 bg-clip-text text-transparent">
-                  pus
+                  Opus
                 </span>
               </h1>
             </div>
