@@ -1,0 +1,58 @@
+services:
+  - type: web
+    name: trading-app-web
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://trading-app-web.onrender.com
+      - key: NEXT_PUBLIC_BASE_URL
+        value: http://trading-app-web:3000
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: GNEWS_API_KEY
+        sync: false
+      - key: GOOGLE_GENAI_API_KEY
+        sync: false
+
+  - type: worker
+    name: trading-app-worker
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL
+        value: http://trading-app-web:3000
+      - key: GOOGLE_GENAI_API_KEY
+        sync: false
+
+  - type: worker
+    name: trading-app-tracker
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL
+        value: http://trading-app-web:3000
