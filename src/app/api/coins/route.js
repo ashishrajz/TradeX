@@ -61,8 +61,25 @@ export async function GET(req) {
         mr = await Promise.all(chartPromises);
       }
 
-      await redis.set(cacheKey, JSON.stringify(mr), "EX", 120);
-      return new Response(JSON.stringify(mr), { status: 200 });
+      // ✅ Prevent caching incomplete responses (e.g. partial or empty sparkline data)
+const validCoins = mr.filter(
+  (coin) =>
+    coin?.image &&
+    coin?.sparkline_in_7d?.price?.length > 0 &&
+    coin.current_price
+);
+
+if (validCoins.length >= Math.floor(ids.length / 2)) {
+  // only cache if at least half of them are valid
+  await redis.set(cacheKey, JSON.stringify(validCoins), "EX", 300);
+} else {
+  console.warn("⚠️ Skipping Redis cache — partial data for:", q);
+}
+
+return new Response(JSON.stringify(validCoins.length ? validCoins : mr), {
+  status: 200,
+});
+
     } catch (err) {
       console.error("❌ Error in /api/coins search", err);
       return new Response(JSON.stringify([]), { status: 200 });

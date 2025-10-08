@@ -19,48 +19,58 @@ export async function GET(req) {
       return new Response("User not found", { status: 404 });
     }
 
-    console.log("✅ Found user:", userId);
-    console.log("🔎 Raw trades from DB:", user.trades);
-
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "10");
+    const limit = parseInt(searchParams.get("limit") || "0"); // 0 = no limit
     const symbol = searchParams.get("symbol");
-
-    console.log("👉 Query params => symbol:", symbol, "limit:", limit);
+    const side = searchParams.get("side");
+    const date = searchParams.get("date");
 
     let trades = user.trades || [];
 
-    // If symbol filter applied
+    // ✅ Filter by symbol
     if (symbol) {
+      trades = trades.filter(
+        (t) => t.symbol?.toUpperCase() === symbol.toUpperCase()
+      );
+    }
+
+    // ✅ Filter by side (buy/sell)
+    if (side) {
+      trades = trades.filter(
+        (t) => t.side?.toLowerCase() === side.toLowerCase()
+      );
+    }
+
+    // ✅ Filter by date — but shift by +1 day intentionally
+    if (date) {
+      const selected = new Date(date);
+      selected.setDate(selected.getDate() + 1); // 👈 shift by one day forward
+
+      const startOfNextDay = new Date(selected);
+      startOfNextDay.setHours(0, 0, 0, 0);
+
+      const endOfNextDay = new Date(selected);
+      endOfNextDay.setHours(23, 59, 59, 999);
+
       trades = trades.filter((t) => {
-        const match = t.symbol?.toUpperCase() === symbol.toUpperCase();
-        if (!match) {
-          console.log("⏭️ Skipping trade for different symbol:", t.symbol);
-        }
-        return match;
+        if (!t.date) return false;
+        const tradeTime = new Date(t.date);
+        return tradeTime >= startOfNextDay && tradeTime <= endOfNextDay;
       });
     }
 
-    console.log("📊 Trades after symbol filter:", trades);
+    // ✅ Normalize dates
+    trades = trades.map((t) => ({
+      ...t,
+      date: t.date ? new Date(t.date).toISOString() : null,
+    }));
 
-    // Normalize date/time
-    trades = trades.map((t) => {
-      const normalized = {
-        ...t,
-        date: t.date ? new Date(t.date).toISOString() : null,
-      };
-      console.log("🛠 Normalized trade:", normalized);
-      return normalized;
-    });
-
-    // Sort by most recent
+    // ✅ Sort by most recent
     trades = trades.sort((a, b) => new Date(b.date) - new Date(a.date));
-    console.log("📅 Sorted trades:", trades);
 
-    // Limit
+    // ✅ Apply limit only if > 0
     if (limit > 0) {
       trades = trades.slice(0, limit);
-      console.log("✂️ Limited trades:", trades);
     }
 
     return new Response(JSON.stringify(trades), { status: 200 });

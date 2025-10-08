@@ -22,7 +22,7 @@ const UserSchema = new mongoose.Schema({
   email: String,
   name: String,
   image: String,
-  cash: { type: Number, default: 10000 },
+  cash: { type: Number, default: 100000 },
   positions: { type: Map, of: Number, default: {} },
   trades: { type: Array, default: [] },
 

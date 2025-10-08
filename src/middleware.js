@@ -1,12 +1,11 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+// src/middleware.js
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 export default clerkMiddleware();
 
+// ✅ Match all routes (default Next.js recommendation for Clerk)
 export const config = {
   matcher: [
-    // Everything EXCEPT /nothing, Next.js internals, and static files
-    '/((?!nothing|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run for API routes except if explicitly /nothing/api
-    '/(api|trpc)(.*)',
+    "/((?!_next|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|json|xml|csv|pdf|mp4|mp3|woff2?|ttf|css|js)).*)",
   ],
 };

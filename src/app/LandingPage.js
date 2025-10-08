@@ -17,7 +17,7 @@ function Changer() {
       setIndex((prev) => (prev + 1) % words.length);
     }, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [words.length]);
 
   return (
     <span className="inline-block bg-gradient-to-r from-teal-400 to-green-400 bg-clip-text text-transparent">
@@ -211,7 +211,7 @@ export default function StarryGrid() {
           <div className="w-1/2 flex items-center px-16">
             <div className="max-w-2xl">
               <h1 className="text-7xl font-bold text-white mb-6 leading-tight">
-                World's Most
+                World&apos;s Most
                 <br />
                 Powerful Trading App.
                 <br />

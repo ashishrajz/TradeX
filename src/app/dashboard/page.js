@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Sidebar from "@/components/Sidebar";
@@ -18,124 +17,186 @@ const fetcher = (url) => fetch(url).then((r) => r.json());
 async function fetchAssetSparklinesForPortfolio(portfolioAssets = []) {
   if (!Array.isArray(portfolioAssets) || portfolioAssets.length === 0) return {};
 
-  // Normalize portfolio symbols into queries (strip common quote suffixes)
   const normalize = (s) =>
-    (s || "")
-      .replace(/(USDT|BUSD|USD|BTC|ETH)$/i, "")
-      .trim()
-      .toLowerCase();
+    (s || "").replace(/(USDT|BUSD|USD|BTC|ETH)$/i, "").trim().toLowerCase();
 
-  // build a list of normalized queries (unique)
-  const normalizedList = Array.from(
+  const fallbackMap = {
+    btc: "bitcoin",
+    eth: "ethereum",
+    sol: "solana",
+    bnb: "binancecoin",
+    ada: "cardano",
+    doge: "dogecoin",
+    xrp: "ripple",
+    dot: "polkadot",
+    avax: "avalanche-2",
+    matic: "matic-network",
+    trx: "tron",
+    usdc: "usd-coin",
+    usdt: "tether",
+    link: "chainlink",
+    ltc: "litecoin",
+    uni: "uniswap",
+    shib: "shiba-inu",
+  };
+
+  // ✅ Normalize + map unique symbols
+  const normalizedSymbols = Array.from(
     new Set(portfolioAssets.map((a) => normalize(a.symbol)))
   );
-
-  // call the same API branch as FeaturedCoins (search/featured) which supplies sparkline_in_7d
-  // We use q=... and per_page to ask for those coins (the API already supports this).
-  const url = `/api/coins?q=${encodeURIComponent(
-    normalizedList.join(",")
-  )}&per_page=${normalizedList.length}`;
+  const mappedSymbols = normalizedSymbols.map(
+    (s) => fallbackMap[s] || s
+  );
 
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      console.warn("fetchAssetSparklinesForPortfolio: coins API returned", resp.status);
-      return {};
-    }
-    const data = await resp.json();
-    // build maps keyed by coin.id and coin.symbol (lowercase)
-    const byId = new Map();
-    const bySymbol = new Map();
-    (Array.isArray(data) ? data : []).forEach((c) => {
-      if (!c) return;
-      if (c.id) byId.set(String(c.id).toLowerCase(), c);
-      if (c.symbol) bySymbol.set(String(c.symbol).toLowerCase(), c);
-    });
+    // ✅ Step 1: Try to get all coins in one cached API call
+    const url = `/api/coins?q=${encodeURIComponent(
+      mappedSymbols.join(",")
+    )}&per_page=${mappedSymbols.length}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Coin API failed (${res.status})`);
+    const data = await res.json();
 
     const result = {};
+    const byId = new Map();
+    const bySymbol = new Map();
 
-    // For each portfolio asset, attempt to find best coin match:
+    (Array.isArray(data) ? data : []).forEach((coin) => {
+      if (!coin) return;
+      byId.set(String(coin.id).toLowerCase(), coin);
+      bySymbol.set(String(coin.symbol).toLowerCase(), coin);
+    });
+
+    // ✅ Step 2: Match each portfolio asset to its CoinGecko data
     for (const asset of portfolioAssets) {
-      const raw = String(asset.symbol || "");
-      const norm = normalize(raw); // e.g. DOGEUSDT -> doge
+      const norm = normalize(asset.symbol);
+      const mapped = fallbackMap[norm] || norm;
 
-      // Try matches in this order:
-      // 1) exact symbol match (coin.symbol === norm)
-      // 2) id match (coin.id === norm)
-      // 3) coin whose symbol is prefix of raw (e.g., coin.symbol === "doge" and raw === "DOGEUSDT")
-      // 4) first coin whose id or symbol contains norm
       let coin =
         bySymbol.get(norm) ||
+        bySymbol.get(mapped) ||
         byId.get(norm) ||
-        [...bySymbol.values()].find((c) =>
-          raw.toLowerCase().startsWith(String(c.symbol || "").toLowerCase())
-        ) ||
-        [...byId.values()].find((c) =>
-          String(c.id || "").toLowerCase().includes(norm)
-        ) ||
-        [...bySymbol.values()][0]; // last resort: pick first returned coin (will be undefined sometimes)
+        byId.get(mapped);
 
-      // Extract sparkline_in_7d.price if present, else [].
-      const spark =
-        (coin && coin.sparkline_in_7d && Array.isArray(coin.sparkline_in_7d.price))
-          ? coin.sparkline_in_7d.price
-          : [];
+      // 🔁 Step 3: Retry individually only if data missing or empty sparkline
+      if (!coin || !coin.sparkline_in_7d?.price?.length) {
+        console.warn(`⚠️ Missing data for ${asset.symbol} → retrying...`);
+        try {
+          const retryUrl = `/api/coins?q=${mapped}&per_page=1`;
+          const retryRes = await fetch(retryUrl);
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const retryCoin = Array.isArray(retryData) ? retryData[0] : null;
+            if (retryCoin?.sparkline_in_7d?.price?.length) {
+              coin = retryCoin;
+              console.log(`✅ Retry success for ${asset.symbol}`);
+            } else {
+              console.warn(`❌ Retry returned no sparkline for ${asset.symbol}`);
+            }
+          }
+          // Short delay to avoid hitting API limits
+          await new Promise((r) => setTimeout(r, 250));
+        } catch (err) {
+          console.error(`❌ Retry failed for ${asset.symbol}:`, err);
+        }
+      }
 
-      result[asset.symbol] = spark;
+      // ✅ Skip if still no data
+      if (!coin) continue;
+
+      result[asset.symbol] = {
+        image: coin.image || "/default-coin.png",
+        sparkline: coin.sparkline_in_7d?.price || [],
+        priceChangePercent: coin.price_change_percentage_24h ?? 0,
+      };
     }
 
-    // Debug: remove/disable in production
-    console.debug("fetchAssetSparklinesForPortfolio url:", url);
-    console.debug("fetchAssetSparklinesForPortfolio result sample:", Object.fromEntries(Object.entries(result).slice(0,5)));
+    // ✅ Step 4: Handle case where API rate-limited (empty response)
+    const missing = portfolioAssets.filter((a) => !result[a.symbol]);
+    if (missing.length > 0) {
+      console.warn("⚠️ Missing symbols after full fetch:", missing.map((a) => a.symbol));
+    }
 
     return result;
   } catch (err) {
-    console.error("fetchAssetSparklinesForPortfolio error:", err);
+    console.error("❌ fetchAssetSparklinesForPortfolio failed:", err);
     return {};
   }
 }
+
+
+
 
 export default function DashboardPage() {
   const { data: portfolio, mutate: mutatePortfolio } = useSWR(
     "/api/user/portfolio",
     fetcher,
-    { refreshInterval: 15_000 }
+    { refreshInterval: 15000 }
   );
+
   const { data: trades } = useSWR("/api/user/trades?limit=50", fetcher);
+
   const [expandedSymbol, setExpandedSymbol] = useState(null);
   const [assetsWithSparkline, setAssetsWithSparkline] = useState([]);
 
   // When portfolio loads (or updates), fetch sparklines and merge into assets
-  useEffect(() => {
-    if (!portfolio?.assets || portfolio.assets.length === 0) {
-      setAssetsWithSparkline([]);
-      return;
-    }
+useEffect(() => {
+  if (!portfolio?.assets || portfolio.assets.length === 0) {
+    setAssetsWithSparkline([]);
+    return;
+  }
 
-    let mounted = true;
-    (async () => {
-      const assets = portfolio.assets;
-      // fetch sparkline map keyed by portfolio asset symbol
+  let mounted = true;
+
+  (async () => {
+    const assets = portfolio.assets;
+    setAssetsWithSparkline((prev) => {
+      // show existing data while new data loads (prevents flicker)
+      return prev.length ? prev : assets;
+    });
+
+    try {
       const sparkMap = await fetchAssetSparklinesForPortfolio(assets);
       if (!mounted) return;
 
-      const merged = assets.map((a) => ({
-        ...a,
-        // either the sparkline from map or fallback empty array
-        sparkline: sparkMap[a.symbol] || [],
-      }));
+      const merged = assets.map((a) => {
+        const sparkData = sparkMap[a.symbol];
+
+        return {
+          ...a,
+          // ✅ Use cached image if available from last render
+          image:
+            sparkData?.image ||
+            a.image ||
+            "/default-coin.png",
+
+          // ✅ Gracefully fallback to previous sparkline if new one fails
+          sparkline:
+            sparkData?.sparkline?.length
+              ? sparkData.sparkline
+              : (a.sparkline || []),
+
+          priceChangePercent: sparkData?.priceChangePercent ?? a.priceChangePercent ?? 0,
+        };
+      });
 
       setAssetsWithSparkline(merged);
-    })();
+    } catch (err) {
+      console.error("❌ Failed merging sparkline data:", err);
+    }
+  })();
 
-    return () => {
-      mounted = false;
-    };
-  }, [portfolio]);
+  return () => {
+    mounted = false;
+  };
+}, [portfolio]);
+
 
   // compute total asset value for weighting from merged list
   const totalAssetValue = assetsWithSparkline.reduce(
-    (acc, a) => acc + ((a.currentPrice ?? a.price) || 0) * (a.quantity || 0),
+    (acc, a) =>
+      acc + ((a.currentPrice ?? a.price) || 0) * (a.quantity || 0),
     0
   );
 
@@ -148,7 +209,7 @@ export default function DashboardPage() {
     <div className="flex bg-black min-h-screen text-white">
       <Sidebar activeTab="dashboard" setActiveTab={() => {}} />
 
-      <div className="flex-1 p-6 ml-22 space-y-6">
+      <div className="flex-1 p-6 ml-20 space-y-6">
         <h1 className="text-4xl font-bold text-green-400 mb-4">Dashboard</h1>
 
         <DashboardSummary portfolio={portfolio || {}} />
@@ -164,57 +225,112 @@ export default function DashboardPage() {
         {/* Assets section */}
         <div className="bg-gray-900/60 p-6 rounded-2xl border border-green-500/20">
           <h2 className="text-2xl font-bold text-green-400 mb-4">Assets</h2>
-
-          <div className="grid grid-cols-3 gap-6">
-            {/* left: list takes full width unless expanded */}
-            <div className={expandedSymbol ? "col-span-2 space-y-3" : "col-span-3 space-y-3"}>
-              {assetsWithMeta.length > 0 ? (
-                assetsWithMeta.map((asset) => (
-                  <AssetRow
-                    key={asset.symbol}
-                    asset={asset}
-                    isExpanded={expandedSymbol === asset.symbol}
-                    onOpenDetail={() =>
-                      setExpandedSymbol((prev) => (prev === asset.symbol ? null : asset.symbol))
-                    }
-                    anySelected={!!expandedSymbol}
-                  />
-                ))
-              ) : (
-                <div className="text-gray-400">No assets</div>
-              )}
-            </div>
-
-            {/* right: detail box (1 col) */}
-            {expandedSymbol && (
-              <div className="col-span-1 space-y-3">
-                <AssetDetailBox asset={assetsWithMeta.find((a) => a.symbol === expandedSymbol)} />
+          <div className="grid grid-cols-3 gap-6 relative items-start">
+  {/* Left side: Asset list */}
+  <div
+    className={
+      expandedSymbol ? "col-span-2 space-y-3" : "col-span-3 space-y-3"
+    }
+  >
+    {assetsWithMeta.length > 0 ? (
+      assetsWithMeta.map((asset) => (
+        <AssetRow
+          key={asset.symbol}
+          asset={asset}
+          isExpanded={expandedSymbol === asset.symbol}
+          onOpenDetail={() =>
+            setExpandedSymbol((prev) =>
+              prev === asset.symbol ? null : asset.symbol
+            )
+          }
+          anySelected={!!expandedSymbol}
+        />
+      ))
+    ) : (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, idx) => (
+          <div
+            key={idx}
+            className="animate-pulse flex justify-between items-center p-5 bg-gray-800 rounded-2xl"
+          >
+            <div className="flex gap-4 items-center">
+              <div className="w-12 h-12 bg-gray-700 rounded-full" />
+              <div className="space-y-2">
+                <div className="h-4 w-24 bg-gray-700 rounded" />
+                <div className="h-3 w-16 bg-gray-700 rounded" />
               </div>
-            )}
+            </div>
+            <div className="h-4 w-10 bg-gray-700 rounded" />
           </div>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {/* Right side: Sticky detail box */}
+  {expandedSymbol && (
+    <div className="col-span-1 space-y-3 sticky top-24 self-start">
+      <AssetDetailBox
+        asset={assetsWithMeta.find((a) => a.symbol === expandedSymbol)}
+      />
+    </div>
+  )}
+</div>
+
         </div>
 
-        {/* Recent trades */}
-        <div>
-          <h2 className="text-2xl font-bold text-green-400 mb-4">Recent Trades</h2>
+        {/* Recent Trades */}
+        <div className="mt-10">
+          <h2 className="text-3xl font-bold text-green-400 mb-6 drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+            Recent Trades
+          </h2>
+
           <div className="space-y-4">
             {trades?.length ? (
               trades.slice(0, 10).map((t, i) => (
                 <div
                   key={t._id || `${t.symbol}-${i}`}
-                  className="backdrop-blur-xl bg-gray-900/60 p-4 rounded-2xl border border-green-500/20 flex justify-between items-center"
+                  className="backdrop-blur-xl bg-gray-900/60 hover:bg-gray-800/60 p-5 rounded-2xl border border-green-500/20 hover:border-green-500/40 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_25px_rgba(34,197,94,0.25)] flex justify-between items-center transition-all duration-300 cursor-pointer"
                 >
                   <div>
-                    <h3 className="text-lg font-bold">{t.symbol}</h3>
-                    <div className="text-sm text-gray-400">
-                      {t.side} • Qty {t.quantity} • ${t.price}
+                    <h3 className="text-xl font-bold text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)]">
+                      {t.symbol}
+                    </h3>
+                    <div className="text-sm text-gray-300 mt-1 flex flex-wrap gap-3">
+                      <span
+                        className={`font-semibold ${
+                          t.side?.toLowerCase() === "buy"
+                            ? "text-green-400"
+                            : "text-red-400"
+                        }`}
+                      >
+                        {t.side?.toUpperCase() || "N/A"}
+                      </span>
+                      <span>Qty: {t.quantity || 0}</span>
+                      <span>Price: ${t.price || 0}</span>
                     </div>
                   </div>
-                  <div className="text-sm text-gray-400">{new Date(t.date || t.at).toLocaleString()}</div>
+                  <div className="text-sm text-gray-400 text-right">
+                    {new Date(t.date || t.at).toLocaleString()}
+                  </div>
                 </div>
               ))
             ) : (
-              <div className="text-gray-400">No recent trades</div>
+              <div className="space-y-4">
+  {Array.from({ length: 3 }).map((_, idx) => (
+    <div
+      key={idx}
+      className="animate-pulse flex justify-between items-center p-5 bg-gray-800 rounded-2xl"
+    >
+      <div>
+        <div className="h-4 w-32 bg-gray-700 rounded mb-2" />
+        <div className="h-3 w-40 bg-gray-700 rounded" />
+      </div>
+      <div className="h-4 w-20 bg-gray-700 rounded" />
+    </div>
+  ))}
+</div>
+
             )}
           </div>
         </div>

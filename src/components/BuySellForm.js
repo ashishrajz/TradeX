@@ -1,4 +1,4 @@
-"use client";
+'use client';
 import { useState } from "react";
 import toast from "react-hot-toast";
 
@@ -42,7 +42,7 @@ export default function BuySellForm({ symbol, price }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Buy / Sell buttons */}
+      {/* Buy button */}
       <button
         onClick={() => {
           setSide("BUY");
@@ -53,6 +53,7 @@ export default function BuySellForm({ symbol, price }) {
         Buy {symbol}
       </button>
 
+      {/* Sell button */}
       <button
         onClick={() => {
           setSide("SELL");
@@ -65,8 +66,8 @@ export default function BuySellForm({ symbol, price }) {
 
       {/* Popup Modal */}
       {isOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-2xl p-6 w-96 border border-gray-700 shadow-lg">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[99999]">
+    <div className="bg-gray-900 rounded-2xl p-6 w-96 border border-gray-700 shadow-lg">
             <h2 className="text-xl font-bold text-white mb-4">
               {side} {symbol}
             </h2>

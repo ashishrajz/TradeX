@@ -1,13 +1,16 @@
-'use client';
+"use client";
 
-import { useState } from "react";
-import useSWR from "swr";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import CandlestickChart from "@/components/CandlestickChart";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-const fetcher = (url) => fetch(url).then((res) => res.json());
+const fetcher = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch");
+  return res.json();
+};
 
 export default function TransactionsPage() {
   const [side, setSide] = useState("");
@@ -15,16 +18,83 @@ export default function TransactionsPage() {
   const [activeTab, setActiveTab] = useState("transactions");
   const [popupData, setPopupData] = useState(null);
 
-  const query = new URLSearchParams();
-  if (side) query.append("side", side.toLowerCase());
-  if (date) query.append("date", date.toISOString().split("T")[0]);
+  const [limit, setLimit] = useState(50);
+  const [allTrades, setAllTrades] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const observerRef = useRef(null);
 
-  const { data: trades, isLoading } = useSWR(`/api/user/trades?${query.toString()}`, fetcher);
+  // 🧠 Build query URL dynamically
+  const buildUrl = useCallback(
+    (limitOverride) => {
+      const q = new URLSearchParams();
+      if (side) q.append("side", side.toLowerCase());
+      if (date) q.append("date", date.toISOString().split("T")[0]);
+      q.append("limit", limitOverride ?? limit);
+      return `/api/user/trades?${q.toString()}`;
+    },
+    [side, date, limit]
+  );
 
-  const totalValue = trades?.reduce((acc, t) => acc + t.quantity * t.price, 0) || 0;
-  const totalShares = trades?.reduce((acc, t) => acc + t.quantity, 0) || 0;
+  // 🪄 Fetch trades (initial + pagination)
+  const loadTrades = useCallback(
+    async (append = false) => {
+      if (loading) return;
+      setLoading(true);
+      try {
+        const data = await fetcher(buildUrl(limit));
+        if (Array.isArray(data)) {
+          if (append) {
+            setAllTrades((prev) => {
+              const newTrades = data.filter(
+                (t) => !prev.some((p) => p._id === t._id)
+              );
+              return [...prev, ...newTrades];
+            });
+          } else {
+            setAllTrades(data);
+          }
 
-  // --- Open chart popup ---
+          if (data.length < limit) setHasMore(false);
+        }
+      } catch (err) {
+        console.error("❌ Error loading trades:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [limit, buildUrl, loading]
+  );
+
+  // 🏁 Initial load
+  useEffect(() => {
+    loadTrades(false);
+  }, [side, date, loadTrades]);
+
+  // ♾ Infinite scroll observer
+  useEffect(() => {
+    if (loading || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setLimit((prev) => prev + 50);
+          loadTrades(true);
+        }
+      },
+      { threshold: 0.8 }
+    );
+
+    if (observerRef.current) observer.observe(observerRef.current);
+    return () => observer.disconnect();
+  }, [loading, hasMore, loadTrades]);
+
+  // 🧮 Portfolio stats
+  const totalValue =
+    allTrades.reduce((acc, t) => acc + (t.quantity || 0) * (t.price || 0), 0) || 0;
+  const totalShares =
+    allTrades.reduce((acc, t) => acc + (t.quantity || 0), 0) || 0;
+
+  // 📊 Open trade chart
   const openChart = async (trade) => {
     try {
       const res = await fetch(`/api/binance/${trade.symbol}`);
@@ -35,10 +105,7 @@ export default function TransactionsPage() {
         return;
       }
 
-      setPopupData({
-        symbol: trade.symbol,
-        ...marketData,
-      });
+      setPopupData({ symbol: trade.symbol, ...marketData });
     } catch (err) {
       console.error("Failed to fetch market data:", err);
       alert("Failed to load chart data");
@@ -48,25 +115,33 @@ export default function TransactionsPage() {
   const closeChart = () => setPopupData(null);
 
   return (
-    <div className="flex bg-black min-h-screen text-white">
-      {/* Sidebar */}
+    <div className="flex bg-gradient-to-br from-black via-gray-950 to-green-950 min-h-screen text-white relative overflow-hidden">
+      {/* background glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,0.1),transparent_60%),radial-gradient(circle_at_80%_80%,rgba(34,197,94,0.1),transparent_60%)] blur-3xl pointer-events-none"></div>
+
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {/* Main content */}
-      <div className="flex-1 p-6 ml-20">
-        <h1 className="text-3xl font-bold mb-4 text-green-400">Transactions</h1>
+      <div className="flex-1 p-6 ml-20 relative z-10">
+        <h1 className="text-4xl font-bold mb-6 text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+          Transactions
+        </h1>
 
         {/* Filters */}
-        <div className="flex flex-col md:flex-row md:space-x-4 space-y-2 md:space-y-0 items-center mb-6">
-          <div className="flex gap-2">
-            {["", "buy", "sell"].map((s) => (
+        <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0 items-center mb-8">
+          <div className="flex gap-3">
+            {["", "buy", "sell"].map((s, idx) => (
               <button
-                key={s}
-                onClick={() => setSide(s)}
-                className={`px-4 py-2 rounded-xl font-semibold transition ${
+                key={s || idx}
+                onClick={() => {
+                  setSide(s);
+                  setLimit(50);
+                  setAllTrades([]);
+                  setHasMore(true);
+                }}
+                className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 backdrop-blur-md border border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.15)] ${
                   side === s
-                    ? "bg-green-500 text-black"
-                    : "bg-gray-800 text-white hover:bg-gray-700"
+                    ? "bg-green-500/30 text-green-300 shadow-[0_0_20px_rgba(34,197,94,0.4)]"
+                    : "bg-gray-800/40 text-white hover:bg-gray-700/60"
                 }`}
               >
                 {s === "" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -77,16 +152,26 @@ export default function TransactionsPage() {
           <div className="relative inline-block">
             <DatePicker
               selected={date}
-              onChange={(d) => setDate(d)}
+              onChange={(d) => {
+                setDate(d);
+                setLimit(50);
+                setAllTrades([]);
+                setHasMore(true);
+              }}
               placeholderText="Select date"
-              className="border rounded p-2 bg-gray-800 text-white pr-8"
+              className="border border-green-500/20 rounded-xl p-2 bg-gray-900/50 text-white pr-8 focus:outline-none focus:ring-2 focus:ring-green-500/40 backdrop-blur-md"
               dateFormat="yyyy-MM-dd"
             />
             {date && (
               <button
                 type="button"
-                onClick={() => setDate(null)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-white hover:text-red-400"
+                onClick={() => {
+                  setDate(null);
+                  setLimit(50);
+                  setAllTrades([]);
+                  setHasMore(true);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400"
               >
                 ×
               </button>
@@ -94,75 +179,132 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Portfolio Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="backdrop-blur-md bg-gray-900/40 rounded-xl p-4 border border-green-500/20">
-            <p className="text-gray-400 text-sm">Total Value</p>
-            <p className="text-2xl font-bold text-green-400">${totalValue.toLocaleString()}</p>
-          </div>
-          <div className="backdrop-blur-md bg-gray-900/40 rounded-xl p-4 border border-green-500/20">
-            <p className="text-gray-400 text-sm">Active Positions</p>
-            <p className="text-2xl font-bold text-green-400">{trades?.length || 0}</p>
-          </div>
-          <div className="backdrop-blur-md bg-gray-900/40 rounded-xl p-4 border border-green-500/20">
-            <p className="text-gray-400 text-sm">Total Shares</p>
-            <p className="text-2xl font-bold text-green-400">{totalShares}</p>
-          </div>
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+          {[
+            { label: "Total Value", value: `$${totalValue.toLocaleString()}` },
+            { label: "Active Positions", value: allTrades.length || 0 },
+            { label: "Total Shares", value: totalShares },
+          ].map((item, i) => (
+            <div
+              key={i}
+              className="backdrop-blur-xl bg-gray-900/40 rounded-2xl p-5 border border-green-500/20 hover:border-green-400/30 transition-all duration-300 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-[0_0_25px_rgba(34,197,94,0.25)]"
+            >
+              <p className="text-gray-400 text-sm mb-1">{item.label}</p>
+              <p className="text-3xl font-bold text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+                {item.value}
+              </p>
+            </div>
+          ))}
         </div>
 
-        {/* Trades Cards */}
+        {/* Trades List */}
         <div className="space-y-4">
-          {isLoading ? (
-            <div>Loading transactions...</div>
-          ) : trades && trades.length > 0 ? (
-            trades.map((t) => {
-              const value = t.quantity * t.price;
-              return (
-                <div
-                  key={t._id}
-                  className="backdrop-blur-xl bg-gray-900/60 p-4 rounded-2xl border border-green-500/20 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
-                >
-                  {/* Trade info */}
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{t.symbol}</h2>
-                    <p className={`text-sm font-semibold ${t.side.toLowerCase() === "buy" ? "text-green-400" : "text-red-400"}`}>
-                      {t.side.toUpperCase()}
-                    </p>
-                    <div className="flex gap-4 mt-1 text-sm">
-                      <p>Qty: {t.quantity}</p>
-                      <p>Price: ${t.price}</p>
-                      <p>Value: ${value.toLocaleString()}</p>
-                    </div>
-                  </div>
+  {allTrades.length > 0 ? (
+    <>
+      {/* Render actual trades */}
+      {allTrades.map((t, i) => {
+        const value = (t.quantity || 0) * (t.price || 0);
+        return (
+          <div
+            key={t._id || i}
+            onClick={() => openChart(t)}
+            className="cursor-pointer backdrop-blur-lg bg-gray-900/60 hover:bg-gray-800/60 p-5 rounded-2xl border border-green-500/20 hover:border-green-500/40 shadow-md hover:shadow-[0_0_25px_rgba(34,197,94,0.25)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all duration-300"
+          >
+            <div>
+              <h2 className="text-2xl font-bold text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.3)]">
+                {t.symbol || "N/A"}
+              </h2>
+              <p
+                className={`text-sm font-semibold ${
+                  t.side?.toLowerCase() === "buy"
+                    ? "text-green-400"
+                    : "text-red-400"
+                }`}
+              >
+                {t.side?.toUpperCase() || "N/A"}
+              </p>
+              <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-300">
+                <p>Qty: {t.quantity || 0}</p>
+                <p>Price: ${t.price || 0}</p>
+                <p>Value: ${value.toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="text-right text-sm text-gray-400 md:ml-4">
+              {t.date ? new Date(t.date).toLocaleDateString() : "N/A"}
+            </div>
+          </div>
+        );
+      })}
 
-                  {/* Buttons */}
-                  <div className="flex gap-2 mt-2 md:mt-0">
-                    <button
-                      onClick={() => openChart(t)}
-                      className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl text-white font-bold hover:from-emerald-400 hover:to-teal-400 transition"
-                    >
-                      View Chart
-                    </button>
-                  </div>
-
-                  {/* Date */}
-                  <div className="text-right text-sm text-gray-400 md:ml-4">
-                    {new Date(t.date).toLocaleDateString()}
-                  </div>
+      {/* Infinite scroll shimmer */}
+      {loading && (
+        <div className="space-y-4 mt-2">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="animate-pulse backdrop-blur-lg bg-gray-800/60 p-5 rounded-2xl border border-green-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+            >
+              <div className="flex flex-col gap-2 w-full md:w-2/3">
+                <div className="h-6 w-32 bg-gray-700 rounded"></div>
+                <div className="h-4 w-24 bg-gray-700 rounded"></div>
+                <div className="flex gap-4 mt-2">
+                  <div className="h-3 w-16 bg-gray-700 rounded"></div>
+                  <div className="h-3 w-16 bg-gray-700 rounded"></div>
+                  <div className="h-3 w-16 bg-gray-700 rounded"></div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="text-center text-gray-400 p-4">No transactions yet</div>
-          )}
+              </div>
+              <div className="h-4 w-20 bg-gray-700 rounded md:ml-4"></div>
+            </div>
+          ))}
         </div>
+      )}
+
+      <div ref={observerRef} className="h-10" />
+    </>
+  ) : loading ? (
+    // Initial loading shimmer
+    <div className="space-y-4 mt-2">
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div
+          key={idx}
+          className="animate-pulse backdrop-blur-lg bg-gray-800/60 p-5 rounded-2xl border border-green-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+        >
+          <div className="flex flex-col gap-2 w-full md:w-2/3">
+            <div className="h-6 w-32 bg-gray-700 rounded"></div>
+            <div className="h-4 w-24 bg-gray-700 rounded"></div>
+            <div className="flex gap-4 mt-2">
+              <div className="h-3 w-16 bg-gray-700 rounded"></div>
+              <div className="h-3 w-16 bg-gray-700 rounded"></div>
+              <div className="h-3 w-16 bg-gray-700 rounded"></div>
+            </div>
+          </div>
+          <div className="h-4 w-20 bg-gray-700 rounded md:ml-4"></div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="text-center text-gray-500 p-6 backdrop-blur-md bg-gray-900/40 rounded-2xl border border-green-500/10">
+      No transactions yet
+    </div>
+  )}
+</div>
+
+
 
         {/* Popup Chart */}
         {popupData && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-gray-900/80 rounded-3xl p-8 w-full max-w-4xl mx-4 relative border border-green-500/20 shadow-2xl">
-              <button onClick={closeChart} className="absolute top-4 right-4 text-white text-2xl font-bold">×</button>
-              <h2 className="text-3xl font-bold text-white mb-4">{popupData.symbol} Analytics</h2>
+            <div className="bg-gray-900/90 rounded-3xl p-8 w-full max-w-4xl mx-4 relative border border-green-500/30 shadow-[0_0_50px_rgba(34,197,94,0.3)] transition-all duration-300">
+              <button
+                onClick={closeChart}
+                className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-red-400 transition"
+              >
+                ×
+              </button>
+              <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+                {popupData.symbol} Analytics
+              </h2>
               <CandlestickChart data={popupData} />
             </div>
           </div>
