@@ -6,7 +6,7 @@ import { Toaster } from "react-hot-toast";
 // 🔧 Disable prerendering for Clerk-dependent routes
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-export const revalidate = 0;
+
 
 // Load fonts
 const geistSans = Geist({
