@@ -8,7 +8,7 @@ RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY . .
-COPY .env.docker .env.local
+
 
 # Build Next.js app
 RUN npm run build
