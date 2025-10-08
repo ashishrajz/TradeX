@@ -11,7 +11,8 @@ COPY . .
 
 
 # Build Next.js app
-RUN npm run build
+RUN NEXT_SKIP_ENV_VALIDATION=1 npm run build
+
 
 # Final runtime image
 FROM node:18-alpine AS runner

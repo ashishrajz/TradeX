@@ -1,5 +1,8 @@
 "use client";
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Sidebar from "@/components/Sidebar";

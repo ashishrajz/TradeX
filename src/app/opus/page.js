@@ -1,5 +1,8 @@
-"use client"; // 👈 must always be the first line
-export const dynamic = "force-dynamic"; // 👈 next, directly after
+"use client";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 
 import { useState, useRef } from "react";
 import { Lightbulb, TrendingUp, BarChart2 } from "lucide-react";

@@ -59,7 +59,7 @@ export default function StartCopilot() {
         toast.error("Start failed: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      toast.error("Start failed: " + err.message);
+      toast.error(" Start failed: " + err.message);
     } finally {
       setLoading(false);
     }
