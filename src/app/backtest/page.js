@@ -1,11 +1,10 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-
 import { useState } from "react";
 import useSWRMutation from "swr/mutation";
 import useSWR from "swr";
-import dynamic from "next/dynamic";
+import loadable from "next/dynamic"; // ✅ renamed to avoid conflict
 import Sidebar from "@/components/Sidebar";
 import {
   LineChart,
@@ -28,7 +27,8 @@ import {
   Database,
 } from "lucide-react";
 
-const CandleChart = dynamic(() => import("@/components/CandleChart"), { ssr: false });
+const CandleChart = loadable(() => import("@/components/CandleChart"), { ssr: false }); // ✅ use renamed import
+
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
