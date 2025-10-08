@@ -21,7 +21,7 @@ import {
   Wrench
 } from "lucide-react";
 import { RiGeminiLine } from "react-icons/ri";
-import { ClerkProvider, SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
 const Sidebar = ({ activeTab, setActiveTab }) => {
   const router = useRouter();
