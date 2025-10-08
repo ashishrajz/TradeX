@@ -1,6 +1,7 @@
+"use client";
 export const dynamic = "force-dynamic";
 
-"use client";
+
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";

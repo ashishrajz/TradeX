@@ -1,6 +1,7 @@
+"use client";
 export const dynamic = "force-dynamic";
 
-"use client";
+
 import { useState, useRef } from "react";
 import { Lightbulb, TrendingUp, BarChart2 } from "lucide-react";
 import { FaCircleNotch } from "react-icons/fa";
