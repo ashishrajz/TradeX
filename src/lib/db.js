@@ -1,42 +1,27 @@
-// src/lib/db.js
 import mongoose from "mongoose";
 
+let isConnected = false;
 
-const MONGODB_URI = process.env.MONGODB_URI;
+export default async function connectDB() {
+  if (isConnected) return;
 
-if (!MONGODB_URI) {
-  console.error(
-    "\n❌ MONGODB_URI not found in environment.\n" +
-    "Make sure .env.local exists and contains:\n" +
-    "MONGODB_URI=your_mongo_connection_string\n"
-  );
+  const uri = process.env.MONGODB_URI;
 
-  process.exit(1);
-}
-
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
-
-async function connectDB() {
-  if (cached.conn) return cached.conn;
-
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-    }).then((mongoose) => {
-      
-      return mongoose;
-    }).catch((err) => {
-      console.error("❌ MongoDB connection error:", err);
-      process.exit(1);
-    });
+  // ✅ Prevent build crash if no MongoDB URI during build
+  if (!uri) {
+    console.warn("⚠️ MONGODB_URI not found — skipping DB connection (likely build time)");
+    return;
   }
 
-  cached.conn = await cached.promise;
-  return cached.conn;
+  try {
+    await mongoose.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000, // prevent hang if DB unreachable
+    });
+    isConnected = true;
+    console.log("✅ MongoDB connected successfully");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err.message);
+  }
 }
-
-export default connectDB;
