@@ -29,7 +29,7 @@ export async function GET(req) {
         const geckoRes = await fetch(geckoUrl, {
           headers: {
             "User-Agent": "TradeX/1.0",
-            "x-cg-pro-api-key": process.env.COINGECKO_API_KEY || "",
+            "x-cg-demo-api-key": process.env.COINGECKO_API_KEY || "",
           },
           next: { revalidate: 0 },
         });
