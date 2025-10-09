@@ -31,7 +31,7 @@ export async function GET(req) {
       const geckoUrl = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=90&interval=${mapInterval(interval)}`;
       const geckoRes = await fetch(geckoUrl, {
         headers: {
-          "x-cg-demo-api-key": process.env.COINGECKO_API_KEY || "",
+          "x-cg-pro-api-key": process.env.COINGECKO_API_KEY || "",
           "User-Agent": "TradeX/1.0",
         },
         next: { revalidate: 0 },
