@@ -3,7 +3,7 @@ services:
     name: trading-app-web
     env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile.web
     dockerContext: .
     envVars:
       - key: NEXT_PUBLIC_APP_URL
@@ -27,7 +27,7 @@ services:
     name: trading-app-worker
     env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile.worker
     dockerContext: .
     envVars:
       - key: NODE_ENV
@@ -45,7 +45,7 @@ services:
     name: trading-app-tracker
     env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile.tracker
     dockerContext: .
     envVars:
       - key: NODE_ENV
