@@ -1,12 +1,13 @@
+// src/lib/fetchPrice.js
 export async function fetchCurrentPrice(symbol) {
   try {
-    const id = symbol.replace("USDT", "").toLowerCase(); // e.g. btcusdt -> bitcoin
+    const id = symbol.replace("USDT", "").toLowerCase(); // e.g. BTCUSDT -> bitcoin
     const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/ticker?symbol=${id}&vs=usd`;
 
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) {
       const txt = await r.text();
-      console.warn(`[fetchPrice] Non-OK ${symbol} status=${r.status} body=${txt}`);
+      console.warn(`[fetchPrice] ⚠️ Non-OK ${symbol} status=${r.status} body=${txt}`);
       return null;
     }
 
@@ -14,11 +15,11 @@ export async function fetchCurrentPrice(symbol) {
     const coinData = json[id] || {};
     return {
       lastPrice: Number(coinData.usd || 0),
-      priceChangePercent: 0, // (You can extend this if needed)
+      priceChangePercent: 0,
       raw: json,
     };
   } catch (err) {
-    console.error(`[fetchPrice] Error fetching price for ${symbol}:`, err);
+    console.error(`[fetchPrice] ❌ Error fetching price for ${symbol}:`, err);
     return null;
   }
 }

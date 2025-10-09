@@ -5,12 +5,11 @@ dotenv.config({ path: ".env.local" });
 import connectDB from "../src/lib/db.js";
 import LiveRun from "../src/lib/models/LiveRun.js";
 import User from "../src/lib/models/User.js";
-import Trade from "../src/lib/models/Trade.js";
 
 const POLL_INTERVAL = 10_000; // 10s for demo
 const CALL_TIMEOUT_MS = 4000;
 
-
+// ===== UTILITIES =====
 function SMA(values, period) {
   if (values.length < period) return null;
   const slice = values.slice(-period);
@@ -40,21 +39,13 @@ function RSI(values, period = 14) {
 }
 
 function evaluateRule(rule, candles) {
-  const closes = candles.map(c => c.close);
+  const closes = candles.map((c) => c.close);
   let indicatorValue;
 
-  if (rule.indicator === "PRICE") {
-    indicatorValue = candles.at(-1)[rule.params.field || "close"];
-  }
-  if (rule.indicator === "SMA") {
-    indicatorValue = SMA(closes, rule.params.period || 20);
-  }
-  if (rule.indicator === "EMA") {
-    indicatorValue = EMA(closes, rule.params.period || 20);
-  }
-  if (rule.indicator === "RSI") {
-    indicatorValue = RSI(closes, rule.params.period || 14);
-  }
+  if (rule.indicator === "PRICE") indicatorValue = candles.at(-1)[rule.params.field || "close"];
+  if (rule.indicator === "SMA") indicatorValue = SMA(closes, rule.params.period || 20);
+  if (rule.indicator === "EMA") indicatorValue = EMA(closes, rule.params.period || 20);
+  if (rule.indicator === "RSI") indicatorValue = RSI(closes, rule.params.period || 14);
 
   if (indicatorValue == null) return null;
 
@@ -69,14 +60,13 @@ function evaluateRule(rule, candles) {
   }
 }
 
-
+// ===== API HELPERS =====
 async function fetchTicker(symbol) {
   const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/ticker?symbol=${symbol}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error("Ticker fetch failed");
   return r.json();
 }
-
 
 async function callStrategy(url, payload) {
   const controller = new AbortController();
@@ -90,25 +80,22 @@ async function callStrategy(url, payload) {
     });
     clearTimeout(t);
     return r.ok ? r.json() : { action: "HOLD" };
-  } catch {
+  } catch (err) {
     clearTimeout(t);
+    console.warn("[liveWorker] Strategy call failed:", err.message);
     return { action: "HOLD" };
   }
 }
 
-//trade executor
+// ===== TRADE EXECUTION =====
 async function executeTrade(user, run, side, qty, price) {
   if (qty <= 0) return;
-
   const cost = qty * price;
 
   if (side === "BUY") {
     if (cost > run.remainingCapital) return;
-
     run.remainingCapital -= cost;
     run.positions.set(run.symbol, (run.positions.get(run.symbol) || 0) + qty);
-
-    // update user
     user.cash -= cost;
     user.positions.set(run.symbol, (user.positions.get(run.symbol) || 0) + qty);
   } else if (side === "SELL") {
@@ -118,23 +105,11 @@ async function executeTrade(user, run, side, qty, price) {
 
     run.positions.set(run.symbol, prev - sellQty);
     run.remainingCapital += sellQty * price;
-
-    // update user
-    const userPrev = user.positions.get(run.symbol) || 0;
-    const userSellQty = Math.min(userPrev, qty);
-    user.positions.set(run.symbol, userPrev - userSellQty);
-    user.cash += userSellQty * price;
+    user.positions.set(run.symbol, (user.positions.get(run.symbol) || 0) - sellQty);
+    user.cash += sellQty * price;
   }
 
-  // Save run trade log
-  run.tradeHistory.push({
-    side,
-    quantity: qty,
-    price,
-    at: new Date(),
-  });
-
-  // Save user trade history
+  run.tradeHistory.push({ side, quantity: qty, price, at: new Date() });
   user.trades.push({
     symbol: run.symbol,
     side,
@@ -146,78 +121,97 @@ async function executeTrade(user, run, side, qty, price) {
 
   await run.save();
   await user.save();
+  console.log(`[liveWorker] Executed ${side} ${qty} ${run.symbol} @ ${price.toFixed(2)}`);
 }
 
-//main loop
+// ===== MAIN LOOP =====
 async function loopOnce() {
-  await connectDB();
-  const runs = await LiveRun.find({ status: "running" });
-  for (const run of runs) {
-    const user = await User.findOne({ clerkId: run.clerkId });
-    if (!user) continue;
+  try {
+    await connectDB();
+    console.log("[liveWorker] DB connected, polling for active runs...");
 
-    const ticker = await fetchTicker(run.symbol);
-    const price = Number(ticker.lastPrice);
-
-    // stop-loss check
-    if (run.stopLoss) {
-      const equity = run.remainingCapital + (run.positions.get(run.symbol) || 0) * price;
-      run.equityCurve.push({ at: new Date(), equity });
-      const minEquity = run.capital * (1 - run.stopLoss / 100);
-      if (equity < minEquity) {
-        
-        run.status = "stopped";
-        await run.save();
-        continue;
-      }
+    const runs = await LiveRun.find({ status: "running" });
+    if (!runs.length) {
+      console.log("[liveWorker] No active runs found.");
+      return;
     }
 
-    const payload = {
-      symbol: run.symbol,
-      price,
-      account: { cash: run.remainingCapital, positions: Object.fromEntries(run.positions) },
-    };
+    console.log(`[liveWorker] Found ${runs.length} active run(s).`);
 
-    let decision = { action: "HOLD" };
+    for (const run of runs) {
+      const user = await User.findOne({ clerkId: run.clerkId });
+      if (!user) continue;
 
-    if (run.strategyUrl) {
-      
-      decision = await callStrategy(run.strategyUrl, payload);
-    } else if (run.strategyId) {
-      
-      const strategy = user.strategies.find(s => String(s._id) === String(run.strategyId));
-      if (strategy) {
-        const candlesUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/klines?symbol=${run.symbol}&interval=${run.interval}&limit=100`;
-        const r = await fetch(candlesUrl);
-        const candles = await r.json();
+      const ticker = await fetchTicker(run.symbol);
+      const price = Number(ticker.lastPrice);
 
-        for (const rule of strategy.rules) {
-          const res = evaluateRule(rule, candles);
-          if (res) {
-            decision = { action: res.action, quantity: res.quantity || 1 };
-            break;
+      // Stop-loss check
+      if (run.stopLoss) {
+        const equity = run.remainingCapital + (run.positions.get(run.symbol) || 0) * price;
+        run.equityCurve.push({ at: new Date(), equity });
+
+        const minEquity = run.capital * (1 - run.stopLoss / 100);
+        if (equity < minEquity) {
+          run.status = "stopped";
+          await run.save();
+          console.warn(`[liveWorker] Stopped run ${run._id} due to stop loss.`);
+          continue;
+        }
+      }
+
+      const payload = {
+        symbol: run.symbol,
+        price,
+        account: {
+          cash: run.remainingCapital,
+          positions: Object.fromEntries(run.positions),
+        },
+      };
+
+      let decision = { action: "HOLD" };
+
+      if (run.strategyUrl) {
+        decision = await callStrategy(run.strategyUrl, payload);
+      } else if (run.strategyId) {
+        const strategy = user.strategies.find((s) => String(s._id) === String(run.strategyId));
+        if (strategy) {
+          const candlesUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/klines?symbol=${run.symbol}&interval=${run.interval}&limit=100`;
+          const r = await fetch(candlesUrl);
+          const candles = await r.json();
+
+          for (const rule of strategy.rules) {
+            const res = evaluateRule(rule, candles);
+            if (res) {
+              decision = { action: res.action, quantity: res.quantity || 1 };
+              break;
+            }
           }
         }
       }
+
+      const action = decision?.action?.toUpperCase() || "HOLD";
+      const qty = Number(decision?.quantity || 0);
+
+      if (action === "BUY" || action === "SELL") {
+        await executeTrade(user, run, action, qty, price);
+      }
+
+      run.lastRunAt = new Date();
+      await run.save();
     }
-
-    const action = decision?.action?.toUpperCase() || "HOLD";
-    const qty = Number(decision?.quantity || 0);
-
-    if (action === "BUY" || action === "SELL") {
-      await executeTrade(user, run, action, qty, price);
-      
-    }
-
-    run.lastRunAt = new Date();
-    await run.save();
+  } catch (err) {
+    console.error("[liveWorker] Loop error:", err);
   }
 }
 
+// ===== ENTRYPOINT =====
 async function main() {
-  
+  console.log("🚀 liveWorker started (Render process up)");
+  console.log("Polling interval:", POLL_INTERVAL / 1000, "seconds");
+
+  await connectDB();
   setInterval(() => {
-    loopOnce().catch((err) => console.error("Loop error:", err));
+    loopOnce().catch((err) => console.error("[liveWorker] Interval loop error:", err));
   }, POLL_INTERVAL);
 }
 
