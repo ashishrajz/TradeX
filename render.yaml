@@ -9,7 +9,7 @@ services:
       - key: NEXT_PUBLIC_APP_URL
         value: https://trading-app-web.onrender.com
       - key: NEXT_PUBLIC_BASE_URL
-        value: http://trading-app-web:3000
+        value: https://trading-app-web.onrender.com
       - key: MONGODB_URI
         sync: false
       - key: REDIS_URL
@@ -37,7 +37,7 @@ services:
       - key: REDIS_URL
         sync: false
       - key: NEXT_PUBLIC_BASE_URL
-        value: http://trading-app-web:3000
+        value: https://trading-app-web.onrender.com
       - key: GOOGLE_GENAI_API_KEY
         sync: false
 
@@ -55,4 +55,4 @@ services:
       - key: REDIS_URL
         sync: false
       - key: NEXT_PUBLIC_BASE_URL
-        value: http://trading-app-web:3000
+        value: https://trading-app-web.onrender.com
