@@ -7,7 +7,9 @@ export async function GET(req) {
     }
   
     try {
-      const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+      const proxy = "https://api.allorigins.win/raw?url=";
+const url = `${proxy}https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`;
+
       const res = await fetch(url);
   
       if (!res.ok) {
