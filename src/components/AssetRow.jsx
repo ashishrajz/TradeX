@@ -1,5 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, ArrowDownRight, MousePointerClick } from "lucide-react";
 import Image from "next/image";
 
@@ -7,16 +8,23 @@ const Sparkline = dynamic(() => import("./Sparkline"), { ssr: false });
 
 export default function AssetRow({ asset, onOpenDetail, isExpanded, anySelected }) {
   const isUp = (asset.priceChangePercent ?? 0) >= 0;
+  const [sparkData, setSparkData] = useState([]);
 
-  const sparkData =
-    asset.sparkline?.map((p, i) => {
-      const now = Date.now();
-      const start = now - 7 * 24 * 60 * 60 * 1000;
-      return {
-        time: start + (i * 7 * 24 * 60 * 60 * 1000) / asset.sparkline.length,
-        price: p,
-      };
-    }) || [];
+  // ✅ Fetch sparkline from your API route (cached + uses key)
+  useEffect(() => {
+    async function fetchSpark() {
+      try {
+        const r = await fetch(`/api/sparkline?id=${asset.id || asset.symbol?.toLowerCase()}&days=7`);
+        if (r.ok) {
+          const json = await r.json();
+          setSparkData(json);
+        }
+      } catch (err) {
+        console.warn(`[sparkline] Error fetching ${asset.symbol}:`, err);
+      }
+    }
+    fetchSpark();
+  }, [asset.id, asset.symbol]);
 
   return (
     <div
@@ -103,20 +111,20 @@ export default function AssetRow({ asset, onOpenDetail, isExpanded, anySelected 
           </div>
         </div>
 
-        {/* Sparkline */}
+        {/* ✅ Sparkline */}
         {!anySelected && (
           <div className="hidden md:block h-20 col-span-1">
             {sparkData.length > 0 ? (
               <Sparkline prices={sparkData} up={isUp} />
             ) : (
               <div className="text-gray-600 text-xs flex items-center justify-center h-full">
-                No data
+                Loading...
               </div>
             )}
           </div>
         )}
 
-        {/* Action Button (like in FeaturedCoins) */}
+        {/* Action Button */}
         <div className="hidden sm:flex justify-end col-span-full sm:col-span-1">
           <button className="relative group/btn overflow-hidden px-5 py-3 rounded-xl">
             <span className="relative z-10">
@@ -127,7 +135,6 @@ export default function AssetRow({ asset, onOpenDetail, isExpanded, anySelected 
         </div>
       </div>
 
-      {/* Animations (same as FeaturedCoins) */}
       <style jsx>{`
         @keyframes slideUp {
           from {
