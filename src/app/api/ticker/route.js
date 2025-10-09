@@ -2,41 +2,31 @@ import redis from "@/lib/redis";
 
 export const revalidate = 0;
 
-/**
- * ✅ Unified Ticker Endpoint (CoinGecko primary, Binance fallback)
- * - Uses Redis cache for 30s
- * - Handles CoinGecko rate limits (429)
- * - Handles Binance region blocks (451)
- */
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const symbol = (searchParams.get("symbol") || "BTCUSDT").toUpperCase();
+  let symbol = (searchParams.get("symbol") || "BTCUSDT").toUpperCase();
+
+  // --- Normalize symbol (e.g. "SOL" → "SOLUSDT") ---
+  if (!symbol.endsWith("USDT")) symbol = `${symbol}USDT`;
+
   const cacheKey = `ticker:${symbol}`;
+  const coinId = mapSymbolToCoinId(symbol);
 
   try {
-    // 1️⃣ Check Redis cache first
+    // 1️⃣ Redis cache
     const cached = await redis.get(cacheKey);
     if (cached) return new Response(cached, { status: 200 });
 
     let data = null;
-    const coinId = mapSymbolToCoinId(symbol);
 
-    // 2️⃣ Try CoinGecko first (primary)
+    // 2️⃣ Try CoinGecko primary
     if (coinId) {
       try {
         const geckoUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,usdt,btc,eth&include_24hr_change=true`;
         const geckoRes = await fetch(geckoUrl, {
           headers: {
             "User-Agent": "TradeX/1.0",
-            // ✅ Support both demo and pro keys automatically
-            "x-cg-pro-api-key":
-              process.env.COINGECKO_API_KEY?.startsWith("CG-")
-                ? process.env.COINGECKO_API_KEY
-                : undefined,
-            "x-cg-demo-api-key":
-              !process.env.COINGECKO_API_KEY?.startsWith("CG-")
-                ? process.env.COINGECKO_API_KEY || ""
-                : undefined,
+            "x-cg-demo-api-key": process.env.COINGECKO_API_KEY || "",
           },
           next: { revalidate: 0 },
         });
@@ -56,15 +46,44 @@ export async function GET(req) {
           console.warn(`[ticker] CoinGecko error ${geckoRes.status}`);
         }
       } catch (err) {
-        console.error("[ticker] CoinGecko fetch failed:", err.message);
+        console.error("[ticker] CoinGecko fetch failed:", err);
       }
     }
 
-    // 3️⃣ Fallback to Binance (secondary)
+    // 3️⃣ Fallback proxy (Render safe)
+    if (!data && coinId) {
+      try {
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,usdt&include_24hr_change=true`
+        )}`;
+
+        const proxyRes = await fetch(proxyUrl);
+        if (proxyRes.ok) {
+          const json = await proxyRes.json();
+          const coinData = json[coinId];
+          if (coinData) {
+            data = {
+              source: "coingecko-proxy",
+              symbol,
+              lastPrice: coinData.usd ?? coinData.usdt ?? 0,
+              priceChangePercent: coinData.usd_24h_change ?? 0,
+            };
+          }
+        } else {
+          console.warn(`[ticker] Proxy error ${proxyRes.status}`);
+        }
+      } catch (err) {
+        console.error("[ticker] Proxy fetch failed:", err);
+      }
+    }
+
+    // 4️⃣ Binance fallback (if Render somehow allowed)
     if (!data) {
       try {
-        const binanceUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
-        const binanceRes = await fetch(binanceUrl, { next: { revalidate: 0 } });
+        const binanceRes = await fetch(
+          `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`,
+          { next: { revalidate: 0 } }
+        );
 
         if (binanceRes.ok) {
           const json = await binanceRes.json();
@@ -78,30 +97,27 @@ export async function GET(req) {
           console.warn(`[ticker] Binance error ${binanceRes.status}`);
         }
       } catch (err) {
-        console.error("[ticker] Binance fetch failed:", err.message);
+        console.error("[ticker] Binance fetch failed:", err);
       }
     }
 
-    // 4️⃣ If still no data, return error
+    // 5️⃣ No data fallback
     if (!data) {
-      console.error(`[ticker] No valid data for ${symbol}`);
-      return new Response(JSON.stringify({ error: "No valid price data" }), {
-        status: 502,
-      });
+      console.warn(`[ticker] No valid data for ${symbol}`);
+      return new Response("No valid price data", { status: 502 });
     }
 
-    // 5️⃣ Cache and return
+    // 6️⃣ Cache in Redis for 30 s
     await redis.set(cacheKey, JSON.stringify(data), "EX", 30);
+
     return new Response(JSON.stringify(data), { status: 200 });
   } catch (err) {
-    console.error("[ticker] Unexpected error:", err.message);
+    console.error("[ticker] Unexpected error:", err);
     return new Response("Internal Server Error", { status: 500 });
   }
 }
 
-/**
- * 🔁 Map trading symbols → CoinGecko coin IDs
- */
+// --- Mapping for CoinGecko IDs ---
 function mapSymbolToCoinId(symbol) {
   const mapping = {
     BTCUSDT: "bitcoin",
