@@ -135,13 +135,20 @@ export async function POST(req) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ symbol, price: close, candle, position, cash }),
         });
-
+        
+        console.log("[backtest] Sent data to:", activeUrl);
+        console.log("[backtest] Response status:", resp.status);
+        
         let decision = {};
         try {
-          decision = await resp.json();
-        } catch {
+          const text = await resp.text();
+          console.log("[backtest] Raw response text:", text);
+          decision = JSON.parse(text);
+        } catch (err) {
+          console.error("[backtest] Failed to parse decision:", err);
           decision = { action: "HOLD" };
         }
+        
 
         if (decision.action === "BUY" && cash >= close) {
           const qty = decision.quantity || 1;
