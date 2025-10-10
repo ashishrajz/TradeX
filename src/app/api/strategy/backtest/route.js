@@ -1,14 +1,13 @@
+// /api/strategy/backtest/route.js
 import { auth } from "@clerk/nextjs/server";
 import connectDB from "@/lib/db";
 import User from "@/lib/models/User";
 
-// ===== Helper functions =====
+// --- Helper functions ---
 function SMA(values, period) {
   if (values.length < period) return null;
-  const slice = values.slice(-period);
-  return slice.reduce((a, b) => a + b, 0) / period;
+  return values.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
-
 function EMA(values, period) {
   if (values.length < period) return null;
   const k = 2 / (period + 1);
@@ -18,7 +17,6 @@ function EMA(values, period) {
   }
   return ema;
 }
-
 function RSI(values, period = 14) {
   if (values.length < period + 1) return null;
   let gains = 0, losses = 0;
@@ -30,38 +28,26 @@ function RSI(values, period = 14) {
   const rs = gains / (losses || 1);
   return 100 - 100 / (1 + rs);
 }
-
 function evaluateRule(rule, candles) {
   const closes = candles.map(c => c.close);
-  let indicatorValue;
-
-  if (rule.indicator === "PRICE") {
-    indicatorValue = candles.at(-1)[rule.params?.field || "close"];
-  }
-  if (rule.indicator === "SMA") {
-    indicatorValue = SMA(closes, rule.params?.period || 20);
-  }
-  if (rule.indicator === "EMA") {
-    indicatorValue = EMA(closes, rule.params?.period || 20);
-  }
-  if (rule.indicator === "RSI") {
-    indicatorValue = RSI(closes, rule.params?.period || 14);
-  }
-
-  if (indicatorValue == null) return null;
-
+  let value = null;
+  if (rule.indicator === "PRICE") value = candles.at(-1)[rule.params?.field || "close"];
+  if (rule.indicator === "SMA") value = SMA(closes, rule.params?.period || 20);
+  if (rule.indicator === "EMA") value = EMA(closes, rule.params?.period || 20);
+  if (rule.indicator === "RSI") value = RSI(closes, rule.params?.period || 14);
+  if (value == null) return null;
   const v = Number(rule.value);
   switch (rule.condition) {
-    case "<": return indicatorValue < v ? rule : null;
-    case ">": return indicatorValue > v ? rule : null;
-    case "<=": return indicatorValue <= v ? rule : null;
-    case ">=": return indicatorValue >= v ? rule : null;
-    case "==": return indicatorValue == v ? rule : null;
+    case "<": return value < v ? rule : null;
+    case ">": return value > v ? rule : null;
+    case "<=": return value <= v ? rule : null;
+    case ">=": return value >= v ? rule : null;
+    case "==": return value == v ? rule : null;
     default: return null;
   }
 }
 
-// ====== Main API Handler ======
+// --- Main handler ---
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -83,7 +69,7 @@ export async function POST(req) {
     const trades = [];
     const equityCurve = [];
 
-    // ==================== STRATEGY ID MODE ====================
+    // === Strategy ID mode ===
     if (strategyId) {
       const strategy = user.strategies.find(s => String(s._id) === String(strategyId));
       if (!strategy) return new Response("Strategy not found", { status: 404 });
@@ -91,42 +77,29 @@ export async function POST(req) {
       for (let i = 20; i < candles.length; i++) {
         const slice = candles.slice(0, i + 1);
         const c = candles[i];
-
-        let matchedRule = null;
-        for (const rule of strategy.rules) {
-          const res = evaluateRule(rule, slice);
-          if (res) { matchedRule = res; break; }
-        }
-
+        const matchedRule = strategy.rules.find(r => evaluateRule(r, slice));
         if (matchedRule?.action === "BUY" && cash >= c.close) {
           const qty = matchedRule.quantity || 1;
           const cost = qty * c.close;
-          if (cash >= cost) {
-            position += qty;
-            cash -= cost;
-            trades.push({ type: "BUY", qty, price: c.close, time: c.openTime });
-          }
+          position += qty; cash -= cost;
+          trades.push({ type: "BUY", qty, price: c.close, time: c.openTime });
         }
-
         if (matchedRule?.action === "SELL" && position > 0) {
           const qty = Math.min(matchedRule.quantity || position, position);
-          position -= qty;
-          cash += qty * c.close;
+          position -= qty; cash += qty * c.close;
           trades.push({ type: "SELL", qty, price: c.close, time: c.openTime });
         }
-
         equityCurve.push({ time: c.openTime, value: cash + position * c.close });
       }
     }
 
-    // ==================== STRATEGY URL MODE ====================
+    // === Strategy URL mode ===
     else if (strategyUrl || user.strategyUrl) {
       const activeUrl = strategyUrl || user.strategyUrl;
       console.log(`[backtest] Using strategy URL: ${activeUrl}`);
 
       for (const candle of candles) {
         const { openTime, close } = candle;
-
         let decision = { action: "HOLD" };
         try {
           const resp = await fetch(activeUrl, {
@@ -134,41 +107,28 @@ export async function POST(req) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ symbol, price: close, candle, position, cash }),
           });
-
           console.log("[backtest] Sent data to:", activeUrl, "status:", resp.status);
-
-          let decision = { action: "HOLD" };
-try {
-  const text = await resp.text();
-  if (text && text.trim().startsWith("{")) {
-    decision = JSON.parse(text);
-    console.log("[backtest] Decision:", decision);
-  } else {
-    console.warn("[backtest] Non-JSON or empty response:", text?.slice(0, 200));
-  }
-} catch (err) {
-  console.warn("[backtest] Error parsing response:", err.message);
-}
-
+          const text = await resp.text();
+          if (text && text.trim().startsWith("{")) {
+            decision = JSON.parse(text);
+            console.log("[backtest] Decision:", decision);
+          } else {
+            console.warn("[backtest] Non-JSON response:", text?.slice(0, 150));
+          }
         } catch (err) {
-          console.error("[backtest] Strategy API call failed:", err);
+          console.error("[backtest] Strategy API call failed:", err.message);
         }
 
-        // Apply actions
+        // Apply trades
         if (decision.action === "BUY" && cash >= close) {
           const qty = decision.quantity || 1;
-          const cost = close * qty;
-          if (cash >= cost) {
-            position += qty;
-            cash -= cost;
-            trades.push({ type: "BUY", qty, price: close, time: openTime });
-          }
+          const cost = qty * close;
+          position += qty; cash -= cost;
+          trades.push({ type: "BUY", qty, price: close, time: openTime });
         }
-
         if (decision.action === "SELL" && position > 0) {
           const qty = Math.min(decision.quantity || position, position);
-          position -= qty;
-          cash += close * qty;
+          position -= qty; cash += close * qty;
           trades.push({ type: "SELL", qty, price: close, time: openTime });
         }
 
@@ -178,8 +138,8 @@ try {
       return new Response("No strategy provided", { status: 400 });
     }
 
-    // Return results
-    return Response.json({ equityCurve, trades, candles });
+    // ✅ Final return
+    return Response.json({ success: true, equityCurve, trades, candles });
   } catch (err) {
     console.error("❌ Backtest error", err);
     return new Response(err.message, { status: 500 });
