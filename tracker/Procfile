@@ -1,0 +1,1 @@
+tracker: node server/equityTracker.js
