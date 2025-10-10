@@ -137,14 +137,19 @@ export async function POST(req) {
 
           console.log("[backtest] Sent data to:", activeUrl, "status:", resp.status);
 
-          const text = await resp.text();
-          console.log("[backtest] Raw response:", text);
+          let decision = { action: "HOLD" };
+try {
+  const text = await resp.text();
+  if (text && text.trim().startsWith("{")) {
+    decision = JSON.parse(text);
+    console.log("[backtest] Decision:", decision);
+  } else {
+    console.warn("[backtest] Non-JSON or empty response:", text?.slice(0, 200));
+  }
+} catch (err) {
+  console.warn("[backtest] Error parsing response:", err.message);
+}
 
-          try {
-            decision = JSON.parse(text);
-          } catch {
-            console.warn("[backtest] Invalid JSON, treating as HOLD");
-          }
         } catch (err) {
           console.error("[backtest] Strategy API call failed:", err);
         }
