@@ -1,37 +1,125 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 🧠 TRADEX – Virtual Trading & Strategy Lab
 
-## Getting Started
+**TRADEX** is a next-generation virtual trading platform that lets users **learn trading by experimentation** — backtest strategies, run automated copilot bots, and even connect their own AI strategy APIs.
 
-First, run the development server:
+---
 
+## 🚀 Demo Links
+
+- 🌐 **Live App:** [https://trading-app-web.onrender.com/](https://trading-app-web.onrender.com/)
+- 🎥 **Demo Video:** *(add video link here)*
+
+---
+
+## 🧩 Core Features
+
+| Feature | Description |
+|----------|--------------|
+| **🧠 No-Code Strategy Builder** | Create trading strategies visually using indicators (SMA, EMA, RSI, Price). |
+| **⚙️ Backtesting Engine** | Test your logic using real Binance historical data with trade logs and charts. |
+| **🤖 Copilot Mode** | Run live, auto-executing trading bots that execute your strategy every few seconds. |
+| **🪄 AI Suggestion Layer** | Integrated AI assistant helps optimize strategy rules and conditions. |
+| **📊 Visual Analytics** | Equity curves, candlestick charts, trade outcomes, and portfolio metrics. |
+
+---
+
+## 🧱 Tech Stack
+
+### **Frontend**
+- Next.js 14 (App Router)
+- TailwindCSS + ShadCN UI
+- SWR for real-time updates
+- Clerk for user authentication
+- Recharts for visualization
+
+### **Backend**
+- Next.js API Routes (Node.js)
+- MongoDB + Mongoose
+- Redis (for caching)
+- Background Worker (`server/liveWorker.js`)
+- Deployed on **Render**
+
+### **External APIs**
+- Binance Market Data API
+- Custom Strategy API (user-hosted on Render)
+- Clerk Authentication API
+
+---
+
+## ⚡ System Architecture
+
+│ FRONTEND │
+│ Next.js + SWR + Clerk Auth │
+└──────────────┬─────────────┘
+│
+▼
+┌────────────────────────────┐
+│ NEXT.JS API │
+│ Backtest / User / Klines │
+└──────────────┬─────────────┘
+│
+▼
+┌────────────────────────────┐
+│ MongoDB | Redis (Cache) │
+│ LiveRun | Kline Data │
+└──────────────┬─────────────┘
+│
+▼
+┌────────────────────────────┐
+│ Background Worker │
+│ liveWorker.js → Strategy API│
+│ Executes trades, updates DB │
+└────────────────────────────┘
+
+
+---
+
+## ⚙️ Setup Instructions
+
+### 1️⃣ Environment Variables
+NEXT_PUBLIC_BASE_URL=https://trading-app-web.onrender.com
+MONGODB_URI=your_mongo_connection
+REDIS_URL=your_redis_connection
+CLERK_SECRET_KEY=your_clerk_secret
+
+bash
+Copy code
+
+### 2️⃣ Local Development
 ```bash
+git clone https://github.com/<yourusername>/tradex.git
+cd tradex
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+3️⃣ Deploy to Render
+Create a Next.js Web Service for the main app.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Add another service of type Background Worker for:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+bash
+Copy code
+node server/liveWorker.js
+Ensure both share the same .env variables.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4️⃣ Keep Worker Alive
+Use UptimeRobot to ping the deployed URL every few minutes to prevent Render from idling.
 
-## Learn More
+🧠 How It Works
+User selects or creates a strategy (no-code or custom API).
 
-To learn more about Next.js, take a look at the following resources:
+Backtest API simulates trades using Binance data.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Copilot Mode polls Binance ticker every 10s via the worker, executes trades, and stores results in MongoDB.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Frontend visualizes live results via SWR and Recharts.
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+🚧 Future Improvements
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# TradeX
+WebSocket live updates.
+
+Stress testing & performance tuning.
+
+Strategy marketplace.
+
+AI-based auto-optimization.
