@@ -226,10 +226,10 @@ export default function HomePage() {
               <div className="p-3 bg-gray-800 rounded-lg">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-red-400">
-                    ${parseFloat(ticker.lowPrice).toFixed(2)}
+                    ${parseFloat(ticker.low).toFixed(2)}
                   </span>
                   <span className="text-green-400">
-                    ${parseFloat(ticker.highPrice).toFixed(2)}
+                    ${parseFloat(ticker.high).toFixed(2)}
                   </span>
                 </div>
                 <div className="w-full bg-gray-700 rounded-full h-2">
@@ -238,9 +238,9 @@ export default function HomePage() {
                     style={{
                       width: `${
                         ((parseFloat(ticker.lastPrice) -
-                          parseFloat(ticker.lowPrice)) /
-                          (parseFloat(ticker.highPrice) -
-                            parseFloat(ticker.lowPrice))) *
+                          parseFloat(ticker.low)) /
+                          (parseFloat(ticker.high) -
+                            parseFloat(ticker.low))) *
                         100
                       }%`,
                     }}
