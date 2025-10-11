@@ -1,13 +1,13 @@
-// /api/strategy/backtest/route.js
 import { auth } from "@clerk/nextjs/server";
 import connectDB from "@/lib/db";
 import User from "@/lib/models/User";
 
-// --- Helper functions ---
+// === Indicator Helpers ===
 function SMA(values, period) {
   if (values.length < period) return null;
   return values.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
+
 function EMA(values, period) {
   if (values.length < period) return null;
   const k = 2 / (period + 1);
@@ -17,6 +17,7 @@ function EMA(values, period) {
   }
   return ema;
 }
+
 function RSI(values, period = 14) {
   if (values.length < period + 1) return null;
   let gains = 0, losses = 0;
@@ -28,26 +29,41 @@ function RSI(values, period = 14) {
   const rs = gains / (losses || 1);
   return 100 - 100 / (1 + rs);
 }
+
+// === Rule Evaluator ===
 function evaluateRule(rule, candles) {
   const closes = candles.map(c => c.close);
-  let value = null;
-  if (rule.indicator === "PRICE") value = candles.at(-1)[rule.params?.field || "close"];
-  if (rule.indicator === "SMA") value = SMA(closes, rule.params?.period || 20);
-  if (rule.indicator === "EMA") value = EMA(closes, rule.params?.period || 20);
-  if (rule.indicator === "RSI") value = RSI(closes, rule.params?.period || 14);
-  if (value == null) return null;
+  let val;
+
+  switch (rule.indicator) {
+    case "PRICE":
+      val = candles.at(-1)[rule.params?.field || "close"];
+      break;
+    case "SMA":
+      val = SMA(closes, rule.params?.period || 20);
+      break;
+    case "EMA":
+      val = EMA(closes, rule.params?.period || 20);
+      break;
+    case "RSI":
+      val = RSI(closes, rule.params?.period || 14);
+      break;
+  }
+
+  if (val == null) return null;
+
   const v = Number(rule.value);
   switch (rule.condition) {
-    case "<": return value < v ? rule : null;
-    case ">": return value > v ? rule : null;
-    case "<=": return value <= v ? rule : null;
-    case ">=": return value >= v ? rule : null;
-    case "==": return value == v ? rule : null;
+    case "<": return val < v ? rule : null;
+    case ">": return val > v ? rule : null;
+    case "<=": return val <= v ? rule : null;
+    case ">=": return val >= v ? rule : null;
+    case "==": return val == v ? rule : null;
     default: return null;
   }
 }
 
-// --- Main handler ---
+// === Main Backtest Handler ===
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -69,7 +85,7 @@ export async function POST(req) {
     const trades = [];
     const equityCurve = [];
 
-    // === Strategy ID mode ===
+    // === Strategy by ID ===
     if (strategyId) {
       const strategy = user.strategies.find(s => String(s._id) === String(strategyId));
       if (!strategy) return new Response("Strategy not found", { status: 404 });
@@ -81,19 +97,21 @@ export async function POST(req) {
         if (matchedRule?.action === "BUY" && cash >= c.close) {
           const qty = matchedRule.quantity || 1;
           const cost = qty * c.close;
-          position += qty; cash -= cost;
+          position += qty;
+          cash -= cost;
           trades.push({ type: "BUY", qty, price: c.close, time: c.openTime });
         }
         if (matchedRule?.action === "SELL" && position > 0) {
           const qty = Math.min(matchedRule.quantity || position, position);
-          position -= qty; cash += qty * c.close;
+          position -= qty;
+          cash += qty * c.close;
           trades.push({ type: "SELL", qty, price: c.close, time: c.openTime });
         }
         equityCurve.push({ time: c.openTime, value: cash + position * c.close });
       }
     }
 
-    // === Strategy URL mode ===
+    // === Strategy by URL ===
     else if (strategyUrl || user.strategyUrl) {
       const activeUrl = strategyUrl || user.strategyUrl;
       console.log(`[backtest] Using strategy URL: ${activeUrl}`);
@@ -101,34 +119,38 @@ export async function POST(req) {
       for (const candle of candles) {
         const { openTime, close } = candle;
         let decision = { action: "HOLD" };
+
         try {
           const resp = await fetch(activeUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ symbol, price: close, candle, position, cash }),
           });
-          console.log("[backtest] Sent data to:", activeUrl, "status:", resp.status);
           const text = await resp.text();
+
           if (text && text.trim().startsWith("{")) {
             decision = JSON.parse(text);
             console.log("[backtest] Decision:", decision);
           } else {
-            console.warn("[backtest] Non-JSON response:", text?.slice(0, 150));
+            console.warn("[backtest] Non-JSON response:", text?.slice(0, 100));
           }
         } catch (err) {
-          console.error("[backtest] Strategy API call failed:", err.message);
+          console.error("[backtest] Strategy call failed:", err.message);
         }
 
-        // Apply trades
+        // Apply decision
         if (decision.action === "BUY" && cash >= close) {
           const qty = decision.quantity || 1;
           const cost = qty * close;
-          position += qty; cash -= cost;
+          position += qty;
+          cash -= cost;
           trades.push({ type: "BUY", qty, price: close, time: openTime });
         }
+
         if (decision.action === "SELL" && position > 0) {
           const qty = Math.min(decision.quantity || position, position);
-          position -= qty; cash += close * qty;
+          position -= qty;
+          cash += close * qty;
           trades.push({ type: "SELL", qty, price: close, time: openTime });
         }
 
@@ -138,10 +160,19 @@ export async function POST(req) {
       return new Response("No strategy provided", { status: 400 });
     }
 
-    // ✅ Final return
-    return Response.json({ success: true, equityCurve, trades, candles });
+    // === Final Response ===
+    const result = { success: true, equityCurve, trades, candles };
+    console.log("[backtest] ✅ Returning data:", {
+      trades: trades.length,
+      points: equityCurve.length
+    });
+
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" },
+    });
+
   } catch (err) {
-    console.error("❌ Backtest error", err);
+    console.error("❌ Backtest error:", err);
     return new Response(err.message, { status: 500 });
   }
 }
