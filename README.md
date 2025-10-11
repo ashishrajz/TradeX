@@ -6,8 +6,8 @@
 
 ## 🚀 Demo Links
 
-- 🌐 **Live App:** [https://trading-app-web.onrender.com/](https://trading-app-web.onrender.com/)
-- 🎥 **Demo Video:** *(add video link here)*
+- 🌐 **Live App: https://trading-app-web.onrender.com
+- 🎥 **Demo Video:https://drive.google.com/file/d/1qmmGWet27b6YINFa6_iPnp1bGxNEohQm/view?usp=drivesdk
 
 ---
 
