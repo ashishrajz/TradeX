@@ -104,6 +104,8 @@ Ensure both share the same .env variables.
 4️⃣ Keep Worker Alive
 Use UptimeRobot to ping the deployed URL every few minutes to prevent Render from idling.
 
+You can use https://strategy-api-tloe.onrender.com/ as a strategy url it has a simple logic if price goes above 100 sell and comes below 50 then buy.
+
 🧠 How It Works
 User selects or creates a strategy (no-code or custom API).
 
