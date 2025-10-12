@@ -3,7 +3,7 @@
 
 ## 📗 **`FINAL_WRITEUP.md`**
 
-```markdown
+
 # 🧩 TRADEX – Final Technical Writeup
 
 ## 1️⃣ Overview
@@ -91,11 +91,11 @@ User → Web UI → Next.js API → MongoDB
 ## 7️⃣ Cost Estimation
 | Component | Provider | Monthly Cost |
 |------------|-----------|---------------|
-| Render (Web + Worker) | Render | ~$10 |
+| Render (Web + Worker) | Render | ~$0 |
 | MongoDB Atlas | Free Tier | $0 |
 | Redis (Upstash) | Free Tier | $0 |
 | Clerk Auth | Free Plan | $0 |
-| **Total** |  | **≈ $10/month** |
+| **Total** |  | **≈ $0/month** |
 
 ---
 
