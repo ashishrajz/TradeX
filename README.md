@@ -7,7 +7,7 @@
 ## 🚀 Demo Links
 
 - 🌐 **Live App: https://trading-app-web.onrender.com
-- 🎥 **Demo Video:https://drive.google.com/file/d/1qmmGWet27b6YINFa6_iPnp1bGxNEohQm/view
+- 🎥 **Demo Video:https://drive.google.com/file/d/18CoumXX7ve4DTl5sGFSZwr9szYC8xzg8/view?usp=drivesdk
 
 ---
 
