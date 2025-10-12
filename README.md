@@ -77,17 +77,15 @@
 ## ⚙️ Setup Instructions
 
 ### 1️⃣ Environment Variables
-NEXT_PUBLIC_BASE_URL=https://trading-app-web.onrender.com
-MONGODB_URI=your_mongo_connection
-REDIS_URL=your_redis_connection
-CLERK_SECRET_KEY=your_clerk_secret
+Add the environment variables 
+(ask me for that) 
 
 bash
 Copy code
 
 ### 2️⃣ Local Development
 ```bash
-git clone https://github.com/<yourusername>/tradex.git
+git clone https://github.com/ashishrajz/tradex.git
 cd tradex
 npm install
 npm run dev
